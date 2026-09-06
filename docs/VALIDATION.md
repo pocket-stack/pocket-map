@@ -2,11 +2,13 @@
 
 ## Local execution
 
-- Nine app tests cover Mercator wrapping, immediate controller motion while IO
+- Eleven app tests cover Mercator wrapping, immediate controller motion while IO
   waits, keyboard submission, menu ownership, HTTP validators, cache limits,
   duplicate requests, pixel order, invalid image dimensions and bounded search
   results, including a real Bun HTTP 304 cache revalidation. Saved-place tests reopen SQLite, replay committed writes, reject
-  operation-ID reuse, paginate, rename and delete. TypeScript checks pass.
+  operation-ID reuse, paginate, rename and delete. Atlas tests check pixel bytes,
+  cache reuse, FTS search, planar bookmarks, invalid addresses and corrupt data.
+  Legacy bookmark migration preserves entries and operation receipts. TypeScript checks pass.
 - The compiled guest ran 1,591 simulated frames against a synthetic provider.
   Replay covers real auxiliary hit testing, keyboard input, result selection,
   placing a pin, touch inertia, animated zoom, 180 frames with replies withheld,
@@ -15,9 +17,10 @@
   entries and three native-image staging tickets (the pool limit is eight). Staging drains to zero after
   navigation settles. Generated receipts are in `dist/qa/replay.json`.
 - Live OSM DE tiles and Photon search passed through the same compiled guest
-  and resource API. Captures in this README are from that Wasm replay. The live
-  check requests one viewport and one submitted query; it performs no pan scan.
-- QuickJS passed 1,084 frames with a 128 KiB stack, including offline mount,
+  and resource API in the earlier geographic-provider check. That live check
+  requests one viewport and one submitted query; it performs no pan scan. The
+  README now shows the compiled guest using the complete local Hyrule atlas.
+- QuickJS passed 1,084 frames in each of the geographic and Hyrule modes with a 128 KiB stack, including offline mount,
   resource reveal, sustained panning, both zoom directions, local typing,
   search, place navigation and reconnect. Texture tickets drained to zero.
 
@@ -71,9 +74,58 @@ backpressure and has reconnected to the physical 3DS. The guest patch preserving
 transmission credit passes replay / QuickJS checks and was uploaded through
 ftpd with byte-for-byte readback: 1,686,296 bytes, SHA-256
 `cafcdcc0112c8bde54935f3105852c1d3eb582a5feab264cbeda143b515d1e13`.
-Physical interaction acceptance of this patch remains pending.
+The Hyrule deployment below supersedes this binary.
 
-The console already has the native development pairing key. That key has been
-reused locally for Pocket Map's runtime checkout. `bun run update` rebuilds
-only the guest package and delegates delivery and acceptance to PocketJS's
-existing development client; ftpd is unnecessary for subsequent guest changes.
+A subsequent source inspection found that `POCKETJS_OFFLOAD` excludes both
+native development-server initialization and package storage. The existing
+pairing key alone does not enable guest updates in this build. Earlier claims
+that `bun run update` was ready for Pocket Map were incorrect; the unsupported
+command has been removed. Guest fixes still need an ftpd/native deployment.
+
+## Complete Hyrule atlas and latency correction
+
+Preparation downloaded the pinned Zelda Dungeon source and generated all
+21,845 textures (zoom 0–7) plus 2,576 searchable places. The completed SQLite file
+is 591,581,184 bytes. A full verification inflated every texture to exactly
+131,072 bytes, checked per-level counts and passed SQLite integrity checking.
+The receipt is `dist/qa/hyrule-atlas.json`; source revision is
+`d32a85656031d861cef38e32eb927a7d08a983a9`. Assets and databases are ignored.
+
+The Hyrule compiled-guest replay passes 11 checks across 1,001 frames using that
+complete database. It searches Kakariko, navigates to the result, fits the finite
+world without wrapping, holds image responses for half a second, enters a
+prefetched tile and settles after sustained panning. Maxima remain three active
+requests, 40 resident entries and three staging tickets. All tickets drain;
+HTTP downloads remain zero. The OSM replay also passes all 27 checks after the
+bookmark migration. Receipts are `dist/qa/hyrule.json` and `dist/qa/replay.json`.
+
+Two regressions demonstrated failures before the framework correction:
+
+- A blocked image write serialized new provider work. The revised connection
+  overlaps reads with writes inside eight total executing/queued/writing slots.
+  A deterministic socket fixture admits eight jobs while its first write waits,
+  then drains 20 images without disconnecting.
+- A still-desired prefetch was cancelled before transport availability was
+  checked. It now remains useful while a replacement cannot be admitted; its
+  completed texture is reusable without sending the same tile again.
+
+The 49 affected resource/offload tests and eight tile-geometry tests pass, as
+does framework TypeScript. Geometry coverage includes changing a live camera
+from wrapping geographic bounds to a finite atlas and rejecting invalid bounds
+without partially mutating camera state.
+
+The Hyrule native build was uploaded to `192.168.8.102:5000` and read back equal:
+1,689,576 bytes, SHA-256
+`31033e5d9d3ef06ff247fd2c85d42b8d64cfd656f5c77d328fd4ba1cea0eca1f`.
+The paired Mac is running the local atlas provider. Its connected-device trace
+sample contains 375 tile requests: atlas work median/p95 1/1 ms, provider
+round-trip median/p95 2/2 ms and zero HTTP downloads. Socket drain waits have
+median/p95 353/434 ms over 374 writes. These are host-side measurements, not
+render or input latency; each image still sends 128 KiB over the LAN.
+
+Earlier OSM traces had both cached 1–4 ms provider work and uncached work taking
+seconds. The source's documented per-IP speed allowance means absence of HTTP
+429 does not rule out throttling. The complete local atlas removes that external
+service dependency. It does not establish the 3DS bandwidth limit or continuous
+60 fps. The new device session has returned frame telemetry and image requests;
+physical gesture acceptance remains separate from liveness and replay results.

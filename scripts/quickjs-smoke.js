@@ -1,5 +1,6 @@
 // QuickJS execution/stack check with host stubs. Pixels are covered by sim.ts.
 let node = 3, texture = 1, session = -1, ticks = 0, token = 1;
+const hyrule = scriptArgs[2] === "hyrule";
 const replies = [], tickets = new Set(), saved = [];
 globalThis.ui = { __host: "3ds-dev", __hostAbi: 8, __viewport: { w: 400, h: 240 }, __auxiliarySurface: { root: 2, w: 320, h: 240 },
   __textures: { "shift.svg": 0, "shift-lock.svg": 1, "map-pad.svg": 2, "map-pin.svg": 3 }, __sprites: {}, createNode: () => node++, measureText: text => text.length * 7 };
@@ -19,7 +20,9 @@ globalThis.offload = {
         else if (c.kind === "rename") saved[0].name = c.name;
         else saved.length = 0;
         value = { id };
-      } else value = r.method === "map.info" ? { source: "0123456789abcdef", name: "Smoke map", attribution: "Test", maxZoom: 18 } : [{ id: "one", name: "Tokyo", detail: "Japan", lat: 35.68, lon: 139.76, zoom: 14 }];
+      } else value = r.method === "map.info" ? { source: "0123456789abcdef", name: "Smoke map", attribution: "Test", maxZoom: hyrule ? 7 : 18,
+        ...(hyrule ? { minZoom: 0, space: "planar", local: true, home: { id: "home", name: "Plateau", detail: "Test", space: "planar", x: 108, y: 168, zoom: 4 } } : {}) }
+        : [hyrule ? { id: "one", name: "Kakariko", detail: "Hyrule", space: "planar", x: 166, y: 149, zoom: 6 } : { id: "one", name: "Tokyo", detail: "Japan", lat: 35.68, lon: 139.76, zoom: 14 }];
       replies.push(JSON.stringify({ id: r.id, payload: JSON.stringify(value) }));
     }
     return true;
@@ -34,7 +37,7 @@ try {
   session = 1; frames(90); check(s.front().tiles.every(t => s.frontView.state(t.input).status === "ready"), "tile reveal");
   frames(300, 0, 0x80ff); s.zoom(1); frames(90); s.zoom(-1); frames(90);
   s.openSearch(); s.key("t"); check(s.query() === "t", "local typing"); s.search(); frames(60); check(s.places().length === 1, "search");
-  s.go(); frames(90); check(s.pin().name === "Tokyo", "place navigation");
+  s.go(); frames(90); check(s.pin().name === (hyrule ? "Kakariko" : "Tokyo"), "place navigation");
   s.saveCurrent(); check(s.mode() === "name", "save naming mount"); s.saved.changeName("Saved in QuickJS"); s.key("GO"); frames(60);
   check(s.mode() === "saved" && s.saved.page().total === 1, "saved list mount");
   s.saved.begin(s.saved.selected(), true); s.saved.changeName("Renamed"); s.key("GO"); frames(60);

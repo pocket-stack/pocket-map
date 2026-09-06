@@ -5,15 +5,17 @@ import { NODE_TYPE, PROP, BTN } from "../runtime/contracts/spec/spec.ts";
 import { encodePNG } from "../runtime/tests/png.ts";
 import { dispatchOffload } from "../runtime/tools/offload-provider.ts";
 import { MapProvider, defaultConfig } from "../host/provider.ts";
+import { AtlasProvider } from "../host/atlas.ts";
 import type { MapModel } from "../app/model.ts";
 import type { OffloadImage } from "../runtime/contracts/spec/offload.ts";
 const live = process.argv.includes("--live");
+const hyrule = process.argv.includes("--hyrule");
 const fixture = createCanvas(256, 256), c = fixture.getContext("2d");
 c.fillStyle = "#e8e5d7"; c.fillRect(0, 0, 256, 256); c.fillStyle = "#b3ced7"; c.fillRect(170, 0, 86, 256);
 for (let x = 14; x < 170; x += 30) { c.fillStyle = "#fffdf4"; c.fillRect(x, 0, 5, 256); }
 for (let y = 20; y < 256; y += 32) { c.fillStyle = "#fffdf4"; c.fillRect(0, y, 170, 5); }
 c.fillStyle = "#b8cfa4"; c.fillRect(50, 70, 55, 48); c.fillStyle = "#5e705e"; c.font = "13px Arial"; c.fillText("Replay fixture", 30, 155);
-const provider = new MapProvider({ ...defaultConfig, cache: live ? ".local/cache.sqlite" : ":memory:" }, live ? fetch : (async url => {
+const provider = hyrule ? new AtlasProvider(".local/hyrule") : new MapProvider({ ...defaultConfig, cache: live ? ".local/cache.sqlite" : ":memory:" }, live ? fetch : (async url => {
   if (String(url).includes("photon")) return new Response(JSON.stringify({ features: [
     { properties: { osm_type: "R", osm_id: 1, name: "San Francisco", city: "San Francisco", country: "United States", type: "city" }, geometry: { coordinates: [-122.4075, 37.7879] } },
     { properties: { osm_type: "N", osm_id: 2, name: "Museum of Modern Art", city: "San Francisco", type: "other" }, geometry: { coordinates: [-122.4007, 37.7859] } },
@@ -30,6 +32,7 @@ ops.insertBefore(1, auxiliary, 0); ops.__auxiliarySurface = { root: auxiliary, w
 const requests: string[] = [], replies: { at: number; raw: string }[] = [];
 const images = new Map<number, OffloadImage>();
 let tick = 0, token = 1, session = 1, uploads = 0, maxStaging = 0, maxPending = 0, maxResident = 0, withhold = false, loseCommandAck = false;
+let replyDelay = 3;
 let hit: number | undefined;
 const checks: string[] = [], failures: string[] = [];
 Object.assign(globalThis, { ui: ops, __pak: await Bun.file("runtime/dist/3ds/guest/pocketmap-main.pak").arrayBuffer(), __simHz: 60,
@@ -64,22 +67,41 @@ async function frames(n: number, buttons = 0, touch?: [number, number], analog =
       }
       if (result.image) {
         const id = token++; images.set(id, result.image); maxStaging = Math.max(maxStaging, images.size);
-        replies.push({ at: tick + 3, raw: JSON.stringify({ id: result.id, image: { token: id, width: result.image.width, height: result.image.height } }) });
-      } else replies.push({ at: tick + 3, raw: JSON.stringify(result) });
+        replies.push({ at: tick + replyDelay, raw: JSON.stringify({ id: result.id, image: { token: id, width: result.image.width, height: result.image.height } }) });
+      } else replies.push({ at: tick + replyDelay, raw: JSON.stringify(result) });
     }
   }
 }
 async function tap(x: number, y: number) { await frames(1, 0, [x, y]); await frames(1); }
 async function press(button: number) { await frames(1, button); await frames(1); }
 mkdirSync("dist/qa", { recursive: true });
-async function shot(name: string) { await Bun.write(`dist/qa/${live ? "live-" : "replay-"}${name}.png`, encodePNG(wasm.render().slice(), 400, 480)); }
+async function shot(name: string) { await Bun.write(`dist/qa/${hyrule ? "hyrule-" : live ? "live-" : "replay-"}${name}.png`, encodePNG(wasm.render().slice(), 400, 480)); }
 await frames(3); await shot("loading"); await frames(75);
 if (live && !s.front()!.tiles.every(t => s.frontView.state(t.input).status === "ready")) console.log(s.front()!.tiles.map(t => ({ input: t.input, state: s.frontView.state(t.input) })));
 check(s.front()!.tiles.every(t => s.frontView.state(t.input).status === "ready"), "All visible tiles materialize through resource demand and native image tickets");
 await shot("map");
 await tap(30, 18); check(s.mode() === "search", "Search touch button opens local keyboard");
 await shot("keyboard");
-if (live) {
+if (hyrule) {
+  check(s.planar() && s.info()?.local, "Hyrule opens as a local finite atlas with its own home and zoom bounds");
+  s.setQuery("Kakariko"); s.search(); await frames(40); await shot("results");
+  check(s.places().some(p => p.name.includes("Kakariko")), "SQLite place search finds Kakariko without an HTTP request");
+  s.go(); await frames(100); await shot("village");
+  check(s.pin()?.space === "planar" && s.front()!.tiles.every(t => s.frontView.state(t.input).status === "ready"), "Search navigation places the pin in atlas coordinates and resolves the village tiles");
+  s.camera.jump(128, 128, 0); await frames(100); await shot("overview");
+  check(s.front()!.tiles.length === 1 && s.front()!.tiles[0].input.z === 0, "Minimum zoom covers the finite world without wrapping copies");
+  replyDelay = 30;
+  s.camera.jump((32 * 256 - 300) / 64, (32 * 256 + 128) / 64, 6); await frames(180);
+  const edge = { source: s.info()!.source, z: 6, x: 32, y: 32 };
+  check(s.frontView.state(edge).status === "ready", "Local prefetch prepares a tile 100px beyond the edge with half-second response latency");
+  s.camera.drag(-101, 0); await frames(1);
+  check(s.front()!.tiles.some(t => t.input.x === 32 && t.input.y === 32) && s.frontView.state(edge).status === "ready", "Crossing the local atlas edge reveals the prefetched tile immediately");
+  await frames(180, 0, undefined, 0x80ff); await frames(220);
+  check(s.front()!.tiles.every(t => s.frontView.state(t.input).status === "ready"), "The local atlas catches up after sustained motion with delayed replies");
+  check(s.lookAhead().length <= 12 && maxResident <= 40 && maxPending <= 4 && maxStaging <= 8, "Larger local prefetch stays within device request, staging and residency budgets");
+  replyDelay = 3; await frames(100); await shot("pan");
+  check(images.size === 0, "Atlas navigation releases every consumed or cancelled image ticket");
+} else if (live) {
   // One requested view and one explicit search. Stress replay never uses public tiles.
   s.setQuery("San Francisco"); s.search(); await frames(35); await shot("results");
   check(s.places().length > 0, "Live Photon search returned places");
@@ -142,6 +164,6 @@ if (live) {
     await frames(50);
   }
 }
-const receipt = { mode: live ? "live OSM DE / Photon, compiled guest + Wasm" : "deterministic synthetic provider, compiled guest + Wasm", frames: tick, checks, maxPending, maxResident, maxStaging, downloads: provider.cache.downloads, cacheHits: provider.cache.hits,
+const receipt = { mode: hyrule ? "complete local Hyrule atlas, compiled guest + Wasm" : live ? "live OSM DE / Photon, compiled guest + Wasm" : "deterministic synthetic provider, compiled guest + Wasm", frames: tick, checks, maxPending, maxResident, maxStaging, ...provider.diagnostics(),
   hardwareAcceptance: "pending", performance: "Replay validates behavior and budgets, not device frame time" };
-await Bun.write(`dist/qa/${live ? "live" : "replay"}.json`, JSON.stringify(receipt, null, 2)); console.log(receipt); provider.close();
+await Bun.write(`dist/qa/${hyrule ? "hyrule" : live ? "live" : "replay"}.json`, JSON.stringify(receipt, null, 2)); console.log(receipt); provider.close();

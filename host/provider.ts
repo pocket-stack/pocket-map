@@ -67,7 +67,7 @@ export class MapProvider {
     return packRGB(ctx.getImageData(0, 0, 256, 256).data, 256, 256);
   }
   async search(input: SearchInput): Promise<Place[]> {
-    if (typeof input.query !== "string" || input.query.length > 80 || !Number.isFinite(input.lat) || Math.abs(input.lat) > 90 || !Number.isFinite(input.lon) || Math.abs(input.lon) > 180) throw new Error("Invalid place search");
+    if (input.space === "planar" || typeof input.query !== "string" || input.query.length > 80 || !Number.isFinite(input.lat) || Math.abs(input.lat) > 90 || !Number.isFinite(input.lon) || Math.abs(input.lon) > 180) throw new Error("Invalid place search");
     const query = input.query.trim(); if (!query) return [];
     if (this.searching) throw new Error("A search is already running");
     this.searching = true;
@@ -91,7 +91,12 @@ export class MapProvider {
       return places;
     } finally { this.searching = false; }
   }
-  label(input: { name: string; detail: string }) {
+  label(input: { name: string; detail: string }) { return renderLabel(input); }
+  diagnostics() { return { httpHits: this.cache.hits, downloads: this.cache.downloads }; }
+  close() { this.cache.close(); this.bookmarks.close(); }
+}
+
+export function renderLabel(input: { name: string; detail: string }) {
     if (typeof input.name !== "string" || input.name.length > 80 || typeof input.detail !== "string" || input.detail.length > 120) throw new Error("Invalid label");
     const canvas = createCanvas(256, 32), c = canvas.getContext("2d");
     c.fillStyle = "#f7f9fc"; c.fillRect(0, 0, 256, 32);
@@ -99,5 +104,3 @@ export class MapProvider {
     c.fillStyle = "#627387"; c.font = "11px Arial"; c.fillText(input.detail, 5, 28, 246);
     return packRGB(c.getImageData(0, 0, 256, 32).data, 256, 32);
   }
-  close() { this.cache.close(); this.bookmarks.close(); }
-}

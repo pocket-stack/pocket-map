@@ -8,7 +8,7 @@ import { simulationHz } from "@pocketjs/framework/clock";
 import { onFrame } from "@pocketjs/framework/lifecycle";
 import * as hot from "@pocketjs/framework/hot";
 import { createMap, MENU, type MapModel, type Layer } from "./model.ts";
-import { project, unproject, scaleBar } from "./geo.ts";
+import { worldPosition, unproject, scaleBar } from "./geo.ts";
 import type { Place } from "../shared/types.ts";
 const box = (x: number, y: number, w: number, h: number) => ({ posType: 1, insetL: x, insetT: y, width: w, height: h });
 
@@ -22,7 +22,7 @@ function TileLayer(p: { s: MapModel; back?: boolean }) {
     const worldWidth = 256 * 2 ** l.level;
     let offsetX = l.originX - view.x * 2 ** l.level;
     // Rebase at the viewport, including the nearest copy across the date line.
-    offsetX -= Math.round(offsetX / worldWidth) * worldWidth;
+    if (!p.s.planar()) offsetX -= Math.round(offsetX / worldWidth) * worldWidth;
     hot.prop(world, "translateX", 200 + offsetX * scale);
     hot.prop(world, "translateY", 120 + (l.originY - view.y * 2 ** l.level) * scale);
     hot.prop(world, "scaleX", scale); hot.prop(world, "scaleY", scale);
@@ -128,7 +128,7 @@ function Deck(p: { s: MapModel }) {
     <View class="absolute left-0 top-0 w-full h-[38] bg-gradient-to-b from-[#eef3f9] to-[#b5c5d8]" />
     {search}
     <View class="absolute left-[72] top-[6] w-[242] h-[28] rounded-[5] border border-[#91a3ba] bg-white overflow-hidden">
-      <Text class="absolute left-[7] top-[7] text-xs text-[#354d67]">{typing() ? `${(naming() ? p.s.saved.name() : p.s.query()).slice(-31)}|` : saved() ? "Saved on your paired Mac" : results() ? p.s.query().slice(0, 32) : p.s.online() ? "Explore with your Nintendo 3DS" : "Waiting for paired Mac"}</Text>
+      <Text class="absolute left-[7] top-[7] text-xs text-[#354d67]">{typing() ? `${(naming() ? p.s.saved.name() : p.s.query()).slice(-31)}|` : saved() ? "Saved on your paired Mac" : results() ? p.s.query().slice(0, 32) : p.s.online() ? p.s.planar() ? "Hyrule - Breath of the Wild" : "Explore with your Nintendo 3DS" : "Waiting for paired Mac"}</Text>
     </View>
     {keyboard}{padView}{plus}{minus}{left}{middle}{right}{sheet}
   </View></AuxiliarySurface>;
@@ -140,9 +140,10 @@ export default function MapApp() {
   onFrame(() => {
     const v = s.camera.view(), pin = s.pin();
     hot.text(zoomText, `z${v.zoom.toFixed(1)}`);
-    if (pin) { const pos = project(pin.lat, pin.lon); let dx = pos.x - v.x; dx -= Math.round(dx / 256) * 256;
+    if (pin) { const pos = worldPosition(pin); let dx = pos.x - v.x; if (!s.planar()) dx -= Math.round(dx / 256) * 256;
       hot.prop(marker, "translateX", 200 + dx * v.scale - 8); hot.prop(marker, "translateY", 120 + (pos.y - v.y) * v.scale - 22); }
-    const scale = scaleBar(unproject(v.x, v.y).lat, v.zoom); hot.prop(bar, "scaleX", scale.pixels / 70); hot.text(scaleText, scale.label);
+    const scale = s.planar() ? { pixels: 64, label: `${Math.round(64 / v.scale * 24000 / 256)} u` } : scaleBar(unproject(v.x, v.y).lat, v.zoom);
+    hot.prop(bar, "scaleX", scale.pixels / 70); hot.text(scaleText, scale.label);
   });
   const deck = <Deck s={s} />;
   const map = <View debugName="MapViewport" class="absolute left-0 top-0 w-[400] h-[240] overflow-hidden bg-[#e6e7de]">
@@ -169,9 +170,9 @@ export default function MapApp() {
     <SearchResults s={s} />
     <Show when={s.mode() === "about"}><ClassicPanel active style={box(24, 35, 352, 175)}>
       <Text class="absolute left-0 right-0 top-[7] text-xs text-center text-white font-bold">Pocket Map</Text>
-      <Text class="absolute left-[14] top-[37] text-xs text-[#354d67]">{"Stylus / Circle Pad / D-pad: pan\n+ and -: zoom around the map center\nY: search   X: return to selected place\nHold L: places   Hold R: map controls\n\nMaps: OpenStreetMap contributors\nosm.org/copyright | Tiles: OSM DE\nPlace search: Photon by komoot"}</Text>
+      <Text class="absolute left-[14] top-[37] text-xs text-[#354d67]">{`Stylus / Circle Pad / D-pad: pan\n+ and -: zoom around the map center\nY: search   X: return to selected place\nHold L: places   Hold R: map controls\n\n${s.planar() ? "Hyrule: Breath of the Wild\nMap art: Nintendo | Data: Zelda Dungeon\nMap and place search stored on your Mac" : "Maps: OpenStreetMap contributors\nosm.org/copyright | Tiles: OSM DE\nPlace search: Photon by komoot"}`}</Text>
     </ClassicPanel></Show>
     <Context s={s} />
-    <View class="absolute right-0 bottom-0 h-[15] bg-[#ffffffee]" style={{ width: 235 }}><Text class="absolute right-[3] top-[1] text-xs text-[#35434b]">(c) OpenStreetMap contributors</Text></View>
+    <View class="absolute right-0 bottom-0 h-[15] bg-[#ffffffee]" style={{ width: 235 }}><Text class="absolute right-[3] top-[1] text-xs text-[#35434b]">{s.info()?.attribution ?? "Map data"}</Text></View>
   </View>{deck}</>;
 }

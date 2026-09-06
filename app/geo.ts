@@ -16,3 +16,10 @@ export function scaleBar(lat: number, zoom: number) {
   const meters = [5, 2, 1].map(n => n * base).find(n => n <= target) ?? base / 2;
   return { pixels: meters / metersPerPixel, label: meters >= 1000 ? `${meters / 1000} km` : `${meters} m` };
 }
+import type { Position } from "../shared/types.ts";
+export function worldPosition(position: Position) {
+  return position.space === "planar" ? { x: position.x, y: position.y } : project(position.lat, position.lon);
+}
+export function positionAt(x: number, y: number, planar: boolean): Position {
+  return planar ? { space: "planar", x, y } : unproject(x, y);
+}

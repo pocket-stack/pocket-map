@@ -9,8 +9,10 @@ subscriptions. Continuous camera movement writes paint transforms through
 PocketJS `hot` APIs; a tile window change updates the component tree.
 
 The native offload worker owns sockets, the SD pairing-key read and binary
-reception. The paired Mac's capability process owns HTTPS, SQLite, PNG decoding, optional
-Unicode label rasterization and R5G6B5 packing. Provider socket callbacks pass
+reception. The paired Mac's capability process owns SQLite atlas reads, texture
+decompression, optional HTTPS/PNG decoding and Unicode label rasterization.
+Atlas preparation performs JPEG decoding and R5G6B5 packing before browsing.
+Provider socket callbacks pass
 bounded requests and replies; they do not execute these capabilities.
 
 ## Working set
@@ -20,7 +22,7 @@ bounded requests and replies; they do not execute these capabilities.
 | Active resource requests | 3 |
 | Resource starts / materializations | 1 / 1 per frame |
 | Tile collection | 40 entries, two view owners |
-| Tile demand per view | 16 addresses (up to 12 visible + 4 look-ahead) |
+| Tile demand per view | 24 addresses (up to 12 visible + 12 local look-ahead; OSM extras capped at four) |
 | Native image staging | 8 × 131,088 bytes plus metadata |
 | Native image envelope | 16–256px power-of-two sides, two bytes per pixel |
 | Native image uploads | 1 per frame |
@@ -30,8 +32,9 @@ bounded requests and replies; they do not execute these capabilities.
 | Query text | 80 UTF-16 code units |
 | Unicode label collection | 5 × 256×32 images |
 | Mac concurrent tile decodes | 3 |
-| Mac decoded-image cache | 64 entries, honoring HTTP expiry |
+| Mac decoded-image cache | 128 immutable atlas textures; 64 HTTP renditions honoring expiry |
 | Mac HTTP cache | 2,048 bounded responses in SQLite |
+| Mac transport credit | Eight total executing requests, queued replies and blocked writes |
 
 The image collection reserves 18 bytes per pixel plus 512 bytes per entry:
 native staging, old-plus-new core/GPU storage, the tiled upload scratch buffer
@@ -43,16 +46,19 @@ and 2,500-code-unit payload limits.
 
 ## One tile's lifecycle
 
-1. The camera's current viewport produces near-first tile coordinates and
-   up to four extra neighbors using a 64px margin and up to 128px directional
-   lead (0.3 seconds of recent movement). Visible entries are pinned; extras
-   have lower priority and are unpinned. The map
-   wraps longitude, clips polar rows and attaches the provider source identity.
+1. The camera's viewport produces near-first tile coordinates. Hyrule adds up
+   to 12 neighbors using a 256px margin and at most 384px directional lead; OSM
+   adds at most four, with a 128px margin and lead cap. Prediction uses the latest
+   displacement over 48 local-atlas frames or 36 geographic-map frames. Visible
+   entries are pinned; extras have lower priority and are unpinned. Hyrule clips
+   both axes; OSM wraps longitude and clips polar rows. Addresses include the
+   provider source identity.
 2. `createResourceView` declares desired keys. The collection merges both zoom
    layers' demand and reserves entry cost before starting an offload read.
-3. The Mac resolves the named tile capability to its configured URL. It reads
-   a fresh cached PNG or fetches one with HTTP validators, checks its 256px
-   envelope, decodes it and packs opaque R5G6B5 pixels.
+3. The Mac looks up an already baked Hyrule texture in SQLite and decompresses
+   it to exactly 131,072 bytes, or returns a decoded-cache hit. This provider has
+   no HTTP path. The optional OSM provider reads a cached PNG or fetches it with
+   HTTP validators, validates dimensions, decodes and packs R5G6B5 pixels.
 4. The 3DS worker receives binary pixels into a free native slot and publishes
    a small ticket. Socket reads pause when staging credit is exhausted.
 5. The scheduler materializes one completed resource per frame. The native
@@ -77,7 +83,10 @@ operation receipts across process replacement.
 
 The device retains transmission credit after a sent request is cancelled or
 times out, until its reply arrives or the session ends. The Mac pauses reads at
-eight executing requests and pauses writes until the socket drains. Slow image
+eight total executing requests, queued replies and blocked writes. While a
+write waits for the socket to drain, other work can start within that shared
+budget. The scheduler preserves a desired in-flight prefetch when transport
+credit cannot admit its replacement. Slow image
 transfer therefore cannot build a queue proportional to cancelled viewports.
 Connection logs name socket failures, process exits and timed-out methods;
 they omit query text and command payloads.
@@ -92,6 +101,14 @@ gain maps that 4px input-space bound to 5.8px on the map. Circle Pad movement ap
 velocity; release follows exponential inertia. Zoom runs an anchored 180ms
 transition. The integrator gives matching held-input/fling distances at 30 and
 60 Hz. Mercator projection is application code.
+
+`camera.setWorld` validates and replaces zoom limits and world bounds when the
+provider metadata arrives. It stops previous motion and clamps the camera
+without replacing the camera object or resource owners. Hyrule uses a finite
+256-unit square and zoom levels 0–7. Its source coordinates map through
+`x = (east + 12000) / 24000 * 256` and
+`y = (12000 - north) / 24000 * 256`. Search results and bookmarks use an explicit
+planar position instead of treating game coordinates as latitude/longitude.
 
 Tile positions are rebased near the viewport before reaching native float
 transforms, including the nearest world copy at the date line. Tile enumeration
@@ -134,12 +151,23 @@ leave a retry action which retains the operation ID. Cancellation of that UI
 cannot roll back a completed Mac write. Successful writes invalidate saved
 pages; deleting the last row of a page makes the provider return the preceding
 populated page. User data lives in `places.sqlite`; HTTP-cache eviction never
-touches it. The Mac performs all SQL work in its provider process.
+touches it. Hyrule uses `.local/hyrule/places.sqlite`; the geographic provider
+uses `.local/places.sqlite`. Existing geographic records migrate transactionally
+to typed positions while preserving IDs and operation receipts. The Mac performs
+all SQL work in its provider process.
 
-## Scope
+## Atlas preparation and scope
 
-This app implements map browsing, place search and saved places. It has no GPS location,
-turn-by-turn routing, satellite layer or offline-area downloader. Cached views
-are a latency optimization. The public demo services are replaceable through
-host configuration and have no availability guarantee. Network isolation and
-bounded work do not establish a hardware frame-time guarantee.
+The pinned source contains 1,365 JPEG tiles in six levels. Preparation subdivides
+750px source tiles into 256px RGB565 renditions, producing 21,845 tiles in eight
+levels and a 2,576-place SQLite FTS5 index. Deflate compression applies only to
+Mac storage. The completed atlas replaces its destination atomically after all
+levels and metadata have been written. Downloaded art and generated databases
+remain outside Git; source attribution is retained in the app and README.
+
+This app implements map browsing, place search and saved places. Hyrule is fully
+installed on the paired Mac; new tiles still require the LAN connection. There
+is no GPS, turn-by-turn routing or satellite layer. The optional geographic
+provider has no area downloader, and public services have no availability
+guarantee. Network isolation and bounded work do not establish a hardware
+frame-time guarantee.

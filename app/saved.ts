@@ -3,10 +3,11 @@ import { createResourceRuntime, createResourceView } from "@pocketjs/framework/r
 import { offloadResource } from "@pocketjs/framework/resource-offload";
 import type { offload } from "@pocketjs/framework/offload";
 import type { Place, BookmarkPage, BookmarkCommand } from "../shared/types.ts";
+import { validPosition } from "../shared/types.ts";
 
 export type MapMode = "map" | "search" | "results" | "about" | "saved" | "name";
 export function validPlaces(rows: unknown): rows is Place[] {
-  return Array.isArray(rows) && rows.length <= 5 && rows.every(p => p && typeof p.id === "string" && p.id.length <= 80 && typeof p.name === "string" && p.name.length <= 36 && typeof p.detail === "string" && p.detail.length <= 60 && Number.isFinite(p.lat) && Math.abs(p.lat) <= 90 && Number.isFinite(p.lon) && Math.abs(p.lon) <= 180 && Number.isInteger(p.zoom) && p.zoom >= 1 && p.zoom <= 18);
+  return Array.isArray(rows) && rows.length <= 5 && rows.every(p => p && typeof p.id === "string" && p.id.length <= 80 && typeof p.name === "string" && p.name.length <= 36 && typeof p.detail === "string" && p.detail.length <= 60 && Number.isInteger(p.zoom) && p.zoom >= 0 && p.zoom <= 18 && validPosition(p));
 }
 export function createSavedPlaces(io: ReturnType<typeof offload>, runtime: ReturnType<typeof createResourceRuntime>, mode: () => MapMode, setMode: (mode: MapMode) => void) {
   const [offset, setOffset] = createSignal(0), [selection, setSelection] = createSignal(0);
