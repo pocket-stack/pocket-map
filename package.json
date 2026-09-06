@@ -3,6 +3,8 @@
   "scripts": {
     "setup": "bun scripts/setup.ts", "3ds": "bun scripts/build.ts", "host": "bun host/serve.ts",
     "deploy": "bun scripts/deploy.ts", "sim": "bun scripts/sim.ts",
+    "3ds:pair": "bun runtime/tools/3ds-dev.ts pair",
+    "update": "bun run 3ds --pocket-only && bun runtime/tools/3ds-dev.ts push --package dist/pocketmap-main.pocket",
     "test": "bun test --conditions=browser test/geo.test.ts test/provider.test.ts test/model.test.ts test/bookmarks.test.ts test/transport.test.ts",
     "check": "bun run test && runtime/node_modules/.bin/tsc --noEmit"
   }

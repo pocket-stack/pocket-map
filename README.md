@@ -23,6 +23,35 @@ bun run host 192.168.8.102
 
 Exit ftpd and open **Pocket Map** in HBL. The deployment script installs only this app and its pairing key, then reads both back for verification. Keys, saved places and the provider's cache stay under ignored `.local/`. `L + R + START` returns to HBL.
 
+### Updating a running app
+
+**Guest code and assets can update while Pocket Map is running.** The native
+runtime's development connection uses port 8131, separately from the Mac
+offload connection. Pair it once through ftpd if this checkout is not already
+paired:
+
+```sh
+bun run 3ds:pair --host 192.168.8.102 --ftp-port 5000
+```
+
+Exit ftpd and open Pocket Map. Subsequent guest updates use:
+
+```sh
+bun run update                         # rebuild .pocket and discover the paired 3DS
+bun run update --host 192.168.8.102     # explicit address when broadcast is unavailable
+```
+
+The command reuses PocketJS's package builder and development client. It waits
+for the device's acceptance after its first rendered frame completes. A failed
+guest falls back to the previous package. **An update recreates the JS realm**,
+so camera and other in-memory UI state reset; saved places remain on the Mac.
+The development key is stored under ignored `runtime/.pocket/3ds/devices/`.
+`L + R + SELECT` opens the native connection/status menu.
+
+Changes to the native host, ABI, HBL icon or embedded recovery package still
+require `bun run 3ds`, an ftpd deployment and a restart. Mac-only provider changes
+require restarting the Mac daemon. Neither requires changing the guest's API.
+
 | Control | Action |
 | --- | --- |
 | Bottom touchpad | Drag to pan; flick for inertia |

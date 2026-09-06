@@ -67,6 +67,13 @@ fetches, then verifies every pixel of a returned 256px image. UI replay and
 QuickJS checks cover the revised guest cancellation semantics.
 
 The revised Mac daemon is running with process isolation and socket
-backpressure and has reconnected to the physical 3DS. The current guest patch
-preserving transmission credit is built and passes replay / QuickJS checks;
-its upload and physical interaction acceptance require ftpd to be opened.
+backpressure and has reconnected to the physical 3DS. The guest patch preserving
+transmission credit passes replay / QuickJS checks and was uploaded through
+ftpd with byte-for-byte readback: 1,686,296 bytes, SHA-256
+`cafcdcc0112c8bde54935f3105852c1d3eb582a5feab264cbeda143b515d1e13`.
+Physical interaction acceptance of this patch remains pending.
+
+The console already has the native development pairing key. That key has been
+reused locally for Pocket Map's runtime checkout. `bun run update` rebuilds
+only the guest package and delegates delivery and acceptance to PocketJS's
+existing development client; ftpd is unnecessary for subsequent guest changes.
