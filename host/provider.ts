@@ -6,11 +6,8 @@ import { Bookmarks } from "./bookmarks.ts";
 import { join, dirname } from "node:path";
 import type { MapInfo, Place, SearchInput, TileInput } from "../shared/types.ts";
 
-export interface ProviderConfig { tileURL: string; searchURL: string; name: string; attribution: string; maxZoom: number; cache: string }
-export const defaultConfig: ProviderConfig = {
-  tileURL: "https://tile.openstreetmap.de/{z}/{x}/{y}.png", searchURL: "https://photon.komoot.io/api/",
-  name: "OpenStreetMap DE", attribution: "OpenStreetMap contributors", maxZoom: 18, cache: ".local/cache.sqlite",
-};
+import type { ProviderConfig } from "./config.ts";
+export { defaultConfig, type ProviderConfig } from "./config.ts";
 export function packRGB(rgba: Uint8ClampedArray | Uint8Array, width: number, height: number): OffloadImage {
   if (rgba.byteLength !== width * height * 4) throw new Error("Invalid pixel plane");
   const pixels = new Uint8Array(width * height * 2);

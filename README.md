@@ -1,6 +1,6 @@
 # Pocket Map
 
-A map browser for Nintendo 3DS, built with [PocketJS](https://github.com/pocket-stack/pocketjs) and SolidJS 1.9. Search for places, pan with the resistive touch screen, and zoom the map on the upper display. A paired Mac handles network requests, SQLite caching, PNG decoding, label rasterization and saved places.
+A map browser for Nintendo 3DS, built with [PocketJS](https://github.com/pocket-stack/pocketjs) and SolidJS 1.9. Search for places, pan with the resistive touch screen, and zoom the map on the upper display. A paired Mac handles network requests, SQLite caching, PNG decoding, label rasterization and saved places in a separate capability process.
 
 <p><img src="docs/images/map.png" width="320" alt="Pocket Map displaying real OpenStreetMap tiles on a compiled dual-screen guest" /> <img src="docs/images/search.png" width="320" alt="Live Photon place results with the bottom-screen selection touchpad" /></p>
 
@@ -39,6 +39,8 @@ Exit ftpd and open **Pocket Map** in HBL. The deployment script installs only th
 | Saved page: Prev / Next or D-pad left/right | Turn five-place pages |
 | B | Dismiss results/menu; backspace while typing |
 | Shift | Tap for one uppercase letter; double-tap for caps lock |
+
+The Mac keeps connection management separate from native decoding and network work. If the capability process exits, it is reaped and replaced on reconnect. Socket backpressure pauses traffic; cancelling a sent device request retains its wire credit until a reply or disconnection.
 
 Typing, dragging, inertia and zoom transitions update locally. Missing tiles show a fallback; an already loaded previous zoom level stays visible during replacement. A disconnected Mac leaves resident tiles navigable. Search, new tiles and uncached labels require the Mac.
 
@@ -80,7 +82,7 @@ Public services have limited capacity: [OSM DE's terms](https://openstreetmap.de
 ## Architecture and resource pattern
 
 ```text
-3DS UI thread                 3DS network worker          Mac provider worker
+3DS UI thread                 3DS network worker          Mac capability process
 camera + controls             authenticated TCP           HTTPS + SQLite cache
 visible tile demand      ->   bounded request queue   ->  fetch / PNG decode
 ResourceImage fallback   <-   native image tickets    <-  binary R5G6B5 pixels

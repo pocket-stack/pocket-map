@@ -9,7 +9,7 @@ subscriptions. Continuous camera movement writes paint transforms through
 PocketJS `hot` APIs; a tile window change updates the component tree.
 
 The native offload worker owns sockets, the SD pairing-key read and binary
-reception. The paired Mac's worker owns HTTPS, SQLite, PNG decoding, optional
+reception. The paired Mac's capability process owns HTTPS, SQLite, PNG decoding, optional
 Unicode label rasterization and R5G6B5 packing. Provider socket callbacks pass
 bounded requests and replies; they do not execute these capabilities.
 
@@ -66,6 +66,22 @@ ownership have different roles. An old zoom layer retains loaded resources
 while the new layer demands current tiles. It never requests an unseen parent
 pyramid or downloads a city in advance.
 
+## Transport recovery
+
+**The Mac connection manager does not import the native canvas module.** It
+starts the existing capability module with `isolation: "process"`, using Bun IPC
+instead of a Web Worker. Socket loss, a process crash or a nine-second task
+deadline ends that session. The old process is reaped before the next starts;
+its replies cannot cross connection generations. SQLite mutations retain their
+operation receipts across process replacement.
+
+The device retains transmission credit after a sent request is cancelled or
+times out, until its reply arrives or the session ends. The Mac pauses reads at
+eight executing requests and pauses writes until the socket drains. Slow image
+transfer therefore cannot build a queue proportional to cancelled viewports.
+Connection logs name socket failures, process exits and timed-out methods;
+they omit query text and command payloads.
+
 ## Motion and recovery
 
 `createTileCamera` stores level-zero coordinates and log2 zoom. Dragging applies
@@ -118,7 +134,7 @@ leave a retry action which retains the operation ID. Cancellation of that UI
 cannot roll back a completed Mac write. Successful writes invalidate saved
 pages; deleting the last row of a page makes the provider return the preceding
 populated page. User data lives in `places.sqlite`; HTTP-cache eviction never
-touches it. The Mac performs all SQL work in its provider worker.
+touches it. The Mac performs all SQL work in its provider process.
 
 ## Scope
 
