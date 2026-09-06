@@ -1,0 +1,4 @@
+[submodule "runtime"]
+	branch = main
+	path = runtime
+	url = https://github.com/pocket-stack/pocketjs.git
