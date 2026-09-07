@@ -4,9 +4,9 @@ import { wrapTile } from "./geo.ts";
 type View = ReturnType<ReturnType<typeof createTileCamera>["view"]>;
 export interface PlannedTile { input: TileInput; column: number; row: number; priority: number }
 interface Plan { visible: PlannedTile[]; extra: PlannedTile[]; intent: { x: number; y: number; confidence: number } }
-export function createMapPrediction() {
+export function createMapPrediction(viewport = { width: 400, height: 240 }) {
   const intent = createTileIntent(); let previous: View | undefined, now = 0, zoomUntil = 0;
-  let cached: { info: MapInfo; level: number; zoom: number; target: number; x0: number; x1: number; y0: number; y1: number; at: number; plan: Plan } | undefined;
+  let cached: { info: MapInfo; level: number; zoom: number; target: number; x0: number; x1: number; y0: number; y1: number; at: number; zoomPrediction: boolean; x: number; y: number; plan: Plan } | undefined;
   function reset(view: View) { intent.reset(); previous = view; zoomUntil = 0; cached = undefined; }
   return {
     reset,
@@ -22,12 +22,16 @@ export function createMapPrediction() {
       // Re-sort predictive demand at most 12 times/second while the visible
       // tile set is unchanged. A newly exposed row/column is never delayed.
       const scale = 2 ** level / 256, screen = 2 ** view.zoom;
-      const x0 = Math.floor((view.x - 200 / screen) * scale), x1 = Math.ceil((view.x + 200 / screen) * scale) - 1;
-      const y0 = Math.floor((view.y - 120 / screen) * scale), y1 = Math.ceil((view.y + 120 / screen) * scale) - 1;
+      const x0 = Math.floor((view.x - viewport.width / 2 / screen) * scale), x1 = Math.ceil((view.x + viewport.width / 2 / screen) * scale) - 1;
+      const y0 = Math.floor((view.y - viewport.height / 2 / screen) * scale), y1 = Math.ceil((view.y + viewport.height / 2 / screen) * scale) - 1;
+      const stationary = cached?.plan.intent.confidence === 0
+        && cached.x === view.x && cached.y === view.y && !view.moving && now >= zoomUntil;
       if (cached && cached.info === info && cached.level === level && cached.zoom === view.zoom && cached.target === view.targetZoom
-        && cached.x0 === x0 && cached.x1 === x1 && cached.y0 === y0 && cached.y1 === y1 && now - cached.at < 1 / 12 - 1e-8) return cached.plan;
+        && cached.x0 === x0 && cached.x1 === x1 && cached.y0 === y0 && cached.y1 === y1
+        && cached.zoomPrediction === (now < zoomUntil)
+        && (stationary || now - cached.at < 1 / 12 - 1e-8)) return cached.plan;
       const local = info.local === true, lead = intent.predict(local ? 512 : 128), directional = lead.confidence > .45;
-      const options = { ...view, level, width: 400, height: 240, maxTiles: 12, margin: local ? 256 : 128,
+      const options = { ...view, level, ...viewport, maxTiles: 12, margin: local ? 256 : 128,
         leadX: lead.x, leadY: lead.y, directional, maxExtra: info.prefetch === false ? 0 : local ? 12 : 4 };
       const window = planTileWindow(options);
       const address = (list: typeof window.visible, z: number): PlannedTile[] => list
@@ -41,7 +45,8 @@ export function createMapPrediction() {
       const extra = [...zoomTiles.map(t => ({ ...t, priority: 300 + t.priority })),
         ...address(window.lookAhead, level).map(t => ({ ...t, priority: 1000 + t.priority }))].slice(0, local ? 12 : 4);
       const plan = { visible: address(window.visible, level), extra, intent: lead };
-      cached = { info, level, zoom: view.zoom, target: view.targetZoom, x0, x1, y0, y1, at: now, plan };
+      cached = { info, level, zoom: view.zoom, target: view.targetZoom, x0, x1, y0, y1, at: now,
+        zoomPrediction: now < zoomUntil, x: view.x, y: view.y, plan };
       return plan;
     },
   };

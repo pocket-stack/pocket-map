@@ -1,6 +1,6 @@
 # Pocket Map
 
-A map browser for Nintendo 3DS, built with [PocketJS](https://github.com/pocket-stack/pocketjs) and SolidJS 1.9. Browse **OSM vector maps** or the complete Hyrule map from **The Legend of Zelda: Breath of the Wild**. Pan with the resistive touchpad, zoom, search and save places on the paired Mac.
+A map browser for Nintendo 3DS and PSP, built with [PocketJS](https://github.com/pocket-stack/pocketjs) and SolidJS 1.9. Browse **OSM vector maps** or the complete Hyrule map from **The Legend of Zelda: Breath of the Wild**. Pan with the resistive touchpad, zoom, search and save places on the paired Mac.
 
 The Mac fetches OSM vector tiles, prepares bounded geometry and streams it to the 3DS GPU drawing path. Four real San Francisco tiles used **79.5% fewer terrain bytes** than the previous raw bitmap path; z14 geometry is reused through display z18. Hyrule retains its complete local raster atlas and 2,576 searchable places, with no internet requests while browsing. See [vector architecture, measurements and limits](docs/VECTOR_MAP.md).
 
@@ -9,6 +9,12 @@ The Mac fetches OSM vector tiles, prepares bounded geometry and streams it to th
 OSM map data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright), served as Shortbread vectors by VersaTiles.
 
 These are **compiled guest + Wasm captures**, at the 3DS's 400×240 / 320×240 logical resolutions, not console photographs. Map artwork belongs to Nintendo; the pinned atlas and marker source is [Zelda Dungeon's map repository](https://github.com/zeldadungeon/maps/tree/d32a85656031d861cef38e32eb927a7d08a983a9/public/botw). Downloaded assets and generated databases stay outside Git.
+
+## PSP over USB
+
+The PSP port renders the same OSM vector geometry on its local GE, with a 480×272 single-screen UI, shoulder menus, a virtual keyboard and saved places on the Mac. The Mac performs network requests, vector preparation and image decoding through PocketJS's native USB offload worker. Hyrule retains its raster path. See [PSP setup, controls and measured limits](docs/PSP.md).
+
+<img src="docs/images/psp-map.png" width="480" alt="Actual PSP framebuffer showing Pocket Map's OSM vector renderer" />
 
 ## Try it
 

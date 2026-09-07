@@ -29,7 +29,7 @@ export function labelMetrics(name: string) {
   return result;
 }
 export const labelWidth = (name: string) => labelMetrics(name).width;
-export function createAnnotations(io: ReturnType<typeof offload>, runtime: ReturnType<typeof createResourceRuntime>) {
+export function createAnnotations(io: ReturnType<typeof offload>, runtime: ReturnType<typeof createResourceRuntime>, viewport = { width: 400, height: 240 }) {
   const [layer, setLayer] = createSignal<MarkerLayer>("all"),
     [demand, setDemand] = createSignal<MarkerInput[]>([]);
   const collection = runtime.createCollection({
@@ -73,6 +73,7 @@ export function createAnnotations(io: ReturnType<typeof offload>, runtime: Retur
   const [renderRows, setRenderRows] = createSignal<MapMarker[]>([]);
   let last: { x: number; y: number; zoom: number; rows: MapMarker[] } | undefined;
   let settled = false;
+  let demandAt: { x: number; y: number; zoom: number; level: number; info: MapInfo; layer: MarkerLayer } | undefined;
   let placements = new Map<number, { x: number; y: number; width: number }>();
   return {
     layer,
@@ -81,7 +82,7 @@ export function createAnnotations(io: ReturnType<typeof offload>, runtime: Retur
     renderRows,
     placement: (id: number) => placements.get(id),
     reset() {
-      setDemand([]); setRenderRows([]); placements.clear(); last = undefined;
+      setDemand([]); setRenderRows([]); placements.clear(); last = undefined; demandAt = undefined;
       collection.clear();
     },
     update(camera: { x: number; y: number; zoom: number }, level: number, info: MapInfo) {
@@ -89,30 +90,36 @@ export function createAnnotations(io: ReturnType<typeof offload>, runtime: Retur
       const vector = info.render === "mesh",
         size = vector ? 256 : 512;
       const cells = Math.max(1, 2 ** (vector ? level : level - 1));
-      const next: MarkerInput[] =
-        info.markers && layer() !== "off"
-          ? visibleTiles({
-              ...camera,
-              zoom: vector ? camera.zoom : level,
-              level,
-              width: 400,
-              height: 240,
-              tileSize: size,
-              maxTiles: vector ? 12 : 4,
-            })
-              .filter((t) => t.row >= 0 && t.row < cells && (vector || (t.column >= 0 && t.column < cells)))
-              .map((t) => ({
-                source: info.source,
-                z: level,
-                x: vector ? ((t.column % cells) + cells) % cells : t.column,
-                y: t.row,
-                layer: layer(),
-              }))
-          : [];
-      const old = demand();
-      if (next.length !== old.length || next.some((v, n) => {
-        const o = old[n]; return !o || v.source !== o.source || v.layer !== o.layer || v.z !== o.z || v.x !== o.x || v.y !== o.y;
-      })) setDemand(next);
+      const demandChanged = !demandAt || demandAt.x !== camera.x || demandAt.y !== camera.y
+        || demandAt.zoom !== camera.zoom || demandAt.level !== level
+        || demandAt.info !== info || demandAt.layer !== layer();
+      if (demandChanged) {
+        demandAt = { ...camera, level, info, layer: layer() };
+        const next: MarkerInput[] =
+          info.markers && layer() !== "off"
+            ? visibleTiles({
+                ...camera,
+                zoom: vector ? camera.zoom : level,
+                level,
+                width: viewport.width,
+                height: viewport.height,
+                tileSize: size,
+                maxTiles: vector ? 12 : 4,
+              })
+                .filter((t) => t.row >= 0 && t.row < cells && (vector || (t.column >= 0 && t.column < cells)))
+                .map((t) => ({
+                  source: info.source,
+                  z: level,
+                  x: vector ? ((t.column % cells) + cells) % cells : t.column,
+                  y: t.row,
+                  layer: layer(),
+                }))
+            : [];
+        const old = demand();
+        if (next.length !== old.length || next.some((v, n) => {
+          const o = old[n]; return !o || v.source !== o.source || v.layer !== o.layer || v.z !== o.z || v.x !== o.x || v.y !== o.y;
+        })) setDemand(next);
+      }
       const candidates = rows();
       if (settled && last?.x === camera.x && last.y === camera.y && last.zoom === camera.zoom && last.rows === candidates) return;
       last = { ...camera, rows: candidates };
@@ -123,8 +130,8 @@ export function createAnnotations(io: ReturnType<typeof offload>, runtime: Retur
         function place(marker: MapMarker) {
           if (placed.size >= 12 || placed.has(marker[0]) || names.has(marker[1])) return;
           let dx = marker[3] - camera.x; dx -= Math.round(dx / 256) * 256;
-          const width = labelWidth(marker[1]), x = 200 + dx * scale - width / 2, y = 120 + (marker[4] - camera.y) * scale - 7;
-          if (x < 2 || x + width > 398 || y < 29 || y > 208) return;
+          const width = labelWidth(marker[1]), x = viewport.width / 2 + dx * scale - width / 2, y = viewport.height / 2 + (marker[4] - camera.y) * scale - 7;
+          if (x < 2 || x + width > viewport.width - 2 || y < 29 || y > viewport.height - 32) return;
           for (const p of placed.values()) if (x < p.x + p.width + 4 && x + width + 4 > p.x && Math.abs(y - p.y) < 19) return;
           placed.set(marker[0], { x, y, width }); names.add(marker[1]); selected.push(retained.get(marker[0]) ?? marker);
         }
