@@ -212,4 +212,38 @@ transform scaling, opacity fallback, off-screen culling and stale mesh handles.
 The native build and app checks pass. This revision was uploaded to
 `192.168.8.102:5000` and read back equal: 1,740,768 bytes, SHA-256
 `fd9f701d9159aedc8a2e45ffa0aa9e98f0e5fc4d888e6ccca816a2033dd8a135`.
-Physical timing remains pending interaction with this binary.
+Device telemetry received after deployment includes stable intervals of 120
+frames per two-second sample. These are settled-view observations; continuous
+dragging and materialization remain separate measurements.
+
+## Dense vector tile availability
+
+The device's `Tile unavailable` reports corresponded to Mac preparation errors:
+`Vector tile cannot fit the device detail budget`. Many failed requests were
+HTTP-cache hits. Replaying all 362 cached MVTs without network access reproduced
+66 failures across source zooms 3–14. In one failing z12 tile, the old last detail
+pass still contained 4,413 triangles against the 2,048-triangle limit.
+
+The correction adds small-area filtering, coarse line joining/deduplication,
+removal of secondary line detail and complete-feature budget admission. It
+keeps the same native wire, vertex, triangle and residency limits. All 362 cached
+tiles now prepare successfully; 18 require the final feature-admission pass.
+The source blobs and raw comparison renders remain in ignored local QA paths.
+Mac reference / bounded-mesh comparisons include urban, coastal and regional
+tiles. Shape simplification stops at two logical pixels; dense scenes can omit
+smaller geographic features and roads.
+
+22 app tests / 180 assertions and TypeScript pass. Generated fixtures cover
+fragmented major roads, dense land parcels, junctions, loops, overlapping links,
+last-pass admission and rejection without partial mutation. The compiled guest
+replay passes its 13 checks across 1,403 frames, including delayed responses,
+reconnect and the unchanged Hyrule raster path. This is a Mac provider change;
+the installed 3DS binary does not require replacement.
+
+After the Mac daemon restarted with this correction, the running 3DS reconnected
+and requested nine meshes. All nine replies succeeded from the HTTP cache,
+with zero downloads or provider errors. Subsequent settled samples reported
+120 frames per two seconds, UI/core maxima around 11 ms, preparation around
+1 ms and submission below 0.6 ms. The recovery upload interval also recorded
+seven additional CPU frames above 16.67 ms, with a window UI maximum of 27.6 ms;
+settled timing must not be presented as uninterrupted 60 fps during loading.

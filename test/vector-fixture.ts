@@ -1,5 +1,5 @@
 import { PbfWriter } from "pbf";
-type Feature = { type: number; paths: [number, number][][]; properties: Record<string, string> };
+export type Feature = { type: number; paths: [number, number][][]; properties: Record<string, string> };
 export function vectorFixture(dense = false): Uint8Array {
   const polygon = (paths: [number, number][][], properties: Record<string, string> = {}): Feature => ({
     type: 3,
@@ -76,6 +76,10 @@ export function vectorFixture(dense = false): Uint8Array {
         ],
       ]);
     });
+  return encodeVectorFixture(layers);
+}
+
+export function encodeVectorFixture(layers: Record<string, Feature[]>): Uint8Array {
   const output = new PbfWriter();
   for (const [name, features] of Object.entries(layers))
     output.writeMessage(

@@ -102,7 +102,16 @@ fonts are the applicable atlas path here.
 
 The provider triangulates complete polygons, preserving holes, then clips the
 result. Coarser detail passes simplify complete shapes and omit minor layers;
-they do not transmit an arbitrary triangle prefix. Invalid indices, coordinates,
+they do not transmit an arbitrary triangle prefix. Dense tiles remove small
+parcels/holes, minor line layers and road casings. Coarse road preparation joins
+degree-two endpoints and deduplicates links on a tile-aligned grid; junctions
+remain endpoints. Shape simplification tolerance stops at two logical pixels,
+while feature selection can continue to reduce detail. A final admission pass
+selects complete geographic areas and long major roads within the existing
+vertex/triangle limits, then restores painter order. It can omit smaller roads
+or decorative features instead of failing an otherwise valid tile.
+
+Invalid indices, coordinates,
 versions or byte counts are rejected before acquiring native mesh residency.
 
 `createOffloadMeshCollection` owns materialization and eviction. `ResourceMesh`

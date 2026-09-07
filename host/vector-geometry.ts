@@ -31,6 +31,7 @@ const LAND = color(0xf0ede3),
 export class MeshBuilder {
   points: [number, number][] = [];
   faces: [number, number, number, number][] = [];
+  priority = 0;
   private indices = new Map<string, number>();
   triangle(a: Point, b: Point, c: Point, fill: number) {
     let poly = [a, b, c];
@@ -117,6 +118,24 @@ export class MeshBuilder {
       this.triangle(right[i - 1], right[i], left[i], fill);
     }
   }
+  /** Admit a complete feature or leave the builder unchanged. */
+  append(other: MeshBuilder): boolean {
+    if (!other.faces.length) return true;
+    if (this.faces.length + other.faces.length > 2048) return false;
+    const fresh: [number, number][] = [], remap: number[] = [];
+    for (const point of other.points) {
+      const existing = this.indices.get(`${point[0]}/${point[1]}`);
+      remap.push(existing ?? this.points.length + fresh.length);
+      if (existing === undefined) fresh.push(point);
+    }
+    if (this.points.length + fresh.length > 4096) return false;
+    for (const point of fresh) {
+      this.indices.set(`${point[0]}/${point[1]}`, this.points.length);
+      this.points.push(point);
+    }
+    for (const [a, b, c, fill] of other.faces) this.faces.push([remap[a], remap[b], remap[c], fill]);
+    return true;
+  }
   entry(): OffloadMesh {
     return prepareMesh({
       width: 256,
@@ -124,6 +143,34 @@ export class MeshBuilder {
       vertices: this.points.map(([x, y]) => [x / 16, y / 16]),
       triangles: this.faces,
     });
+  }
+}
+
+/** Last detail pass: choose complete features, then restore painter order.
+ * Geographic areas outrank decoration; long major roads outrank short links.
+ * This guarantees a bounded mesh even when a dense source survives simplification. */
+class BudgetMeshBuilder extends MeshBuilder {
+  private features: { mesh: MeshBuilder; priority: number; order: number }[] = [];
+  override polygon(rings: Point[][], fill: number) {
+    const mesh = new MeshBuilder();
+    mesh.polygon(rings, fill);
+    this.features.push({ mesh, priority: this.priority, order: this.features.length });
+  }
+  override line(points: Point[], width: number, fill: number) {
+    const mesh = new MeshBuilder();
+    mesh.line(points, width, fill);
+    let length = 0;
+    for (let i = 1; i < points.length; i++)
+      length += Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y);
+    this.features.push({ mesh, priority: this.priority + length, order: this.features.length });
+  }
+  finish(): MeshBuilder {
+    const budget = new MeshBuilder();
+    const selected = this.features.sort((a, b) => b.priority - a.priority || a.order - b.order)
+      .filter((feature) => budget.append(feature.mesh));
+    const result = new MeshBuilder();
+    for (const feature of selected.sort((a, b) => a.order - b.order)) result.append(feature.mesh);
+    return result;
   }
 }
 function simplify(points: Point[], epsilon: number): Point[] {
@@ -163,6 +210,14 @@ function simplify(points: Point[], epsilon: number): Point[] {
       ? points
       : result;
 }
+function ringArea(ring: Point[]): number {
+  let area = 0;
+  for (let i = 0; i < ring.length; i++) {
+    const a = ring[i], b = ring[(i + 1) % ring.length];
+    area += a.x * b.y - b.x * a.y;
+  }
+  return area / 2;
+}
 type Feature = {
   layer: string;
   kind: string;
@@ -182,6 +237,79 @@ const AREAS = [
   "pier_polygons",
 ];
 const LINES = ["water_lines", "boundaries", "streets", "pier_lines"];
+
+/** Join degree-two endpoints before simplifying. MVT features often split one
+ * road into hundreds of short links; simplifying each link cannot reduce it.
+ * Junctions remain endpoints, so simplification cannot cut across a branch. */
+export function joinLinePaths(paths: Point[][]): Point[][] {
+  const edges = paths.filter((p) => p.length >= 2);
+  const nodes = new Map<string, { edge: number; end: number }[]>();
+  const key = (p: Point) => `${p.x}/${p.y}`;
+  for (const [edge, path] of edges.entries())
+    for (const end of [0, 1]) {
+      const k = key(path[end ? path.length - 1 : 0]);
+      const links = nodes.get(k) ?? [];
+      links.push({ edge, end });
+      nodes.set(k, links);
+    }
+  const used = new Uint8Array(edges.length), result: Point[][] = [];
+  const walk = (edge: number, reverse: boolean) => {
+    const joined: Point[] = [];
+    while (!used[edge]) {
+      used[edge] = 1;
+      const path = edges[edge];
+      for (let j = joined.length ? 1 : 0; j < path.length; j++)
+        joined.push(path[reverse ? path.length - 1 - j : j]);
+      const links = nodes.get(key(joined[joined.length - 1]))!;
+      if (links.length !== 2) break;
+      const next = links.find((link) => !used[link.edge]);
+      if (!next) break;
+      edge = next.edge;
+      reverse = next.end === 1;
+    }
+    result.push(joined);
+  };
+  for (const [edge, path] of edges.entries()) {
+    if (used[edge]) continue;
+    if (nodes.get(key(path[0]))!.length !== 2) walk(edge, false);
+    else if (nodes.get(key(path[path.length - 1]))!.length !== 2) walk(edge, true);
+  }
+  for (let edge = 0; edge < edges.length; edge++) if (!used[edge]) walk(edge, false);
+  return result;
+}
+
+/** At coarse detail, subpixel parallel links and short interchange edges have
+ * the same coverage. Snap to a tile-aligned grid and deduplicate before joining. */
+export function generalizeLinePaths(paths: Point[][], grid: number): Point[][] {
+  const edges = new Map<string, Point[]>();
+  const snap = (p: Point) => ({ x: Math.round(p.x / grid) * grid, y: Math.round(p.y / grid) * grid });
+  const key = (p: Point) => `${p.x}/${p.y}`;
+  for (const path of paths) {
+    if (!path.length) continue;
+    let a = snap(path[0]);
+    for (let i = 1; i < path.length; i++) {
+      const b = snap(path[i]), ka = key(a), kb = key(b);
+      if (ka !== kb) edges.set(ka < kb ? `${ka}:${kb}` : `${kb}:${ka}`, [a, b]);
+      a = b;
+    }
+  }
+  return joinLinePaths([...edges.values()]);
+}
+
+function joinedLines(features: Feature[], grid: number): Feature[] {
+  const groups = new Map<string, Feature>();
+  for (const f of features) {
+    if (!LINES.includes(f.layer)) continue;
+    const key = `${f.layer}/${f.kind}`;
+    let group = groups.get(key);
+    if (!group) {
+      group = { ...f, rings: [] };
+      groups.set(key, group);
+    }
+    for (const ring of f.rings) group.rings.push(ring);
+  }
+  return [...groups.values()].map((f) => ({ ...f, rings: grid ? generalizeLinePaths(f.rings, grid) : joinLinePaths(f.rings) }));
+}
 function roadWidth(kind: string, z: number) {
   return /motorway|trunk/.test(kind)
     ? 3.0
@@ -275,9 +403,11 @@ export function prepareVector(bytes: Uint8Array, z: number): PreparedTile {
   }
   // Complete features at successively coarser detail; never cut an arbitrary
   // triangle prefix which could erase a polygon's holes or half a road.
-  for (let detail = 0; detail < 6; detail++) {
-    const mesh = new MeshBuilder();
-    mesh.polygon(
+  const tolerances = [0.25, 0.5, 1, 2, 3, 5, 8, 12, 16, 20, 24];
+  for (let detail = 0; detail < tolerances.length; detail++) {
+    const drawing = detail === tolerances.length - 1 ? new BudgetMeshBuilder() : new MeshBuilder();
+    drawing.priority = Infinity;
+    drawing.polygon(
       [
         [
           { x: 0, y: 0 },
@@ -288,7 +418,7 @@ export function prepareVector(bytes: Uint8Array, z: number): PreparedTile {
       ],
       LAND,
     );
-    const epsilon = [0.25, 0.5, 1, 2, 3, 5][detail];
+    const epsilon = tolerances[detail];
     for (const layer of AREAS)
       for (const f of features.filter((f) => f.layer === layer)) {
         if (
@@ -305,27 +435,36 @@ export function prepareVector(bytes: Uint8Array, z: number): PreparedTile {
               : layer === "sites"
                 ? color(0xe3dfcf)
                 : LAND;
-        for (const polygon of f.polygons)
-          mesh.polygon(
-            polygon.map((r) => simplify(r, epsilon)),
-            fill,
+        for (const polygon of f.polygons) {
+          if (detail >= 2 && Math.abs(ringArea(polygon[0])) < epsilon * epsilon) continue;
+          drawing.priority = (["ocean", "water_polygons", "land"].includes(layer) ? 1e9 : 1e6) + Math.abs(ringArea(polygon[0]));
+          drawing.polygon(
+            polygon.filter((r, i) => i === 0 || detail < 2 || Math.abs(ringArea(r)) >= epsilon * epsilon)
+              .map((r) => simplify(r, Math.min(epsilon, 2))), fill,
           );
+        }
       }
-    const lines = features
+    const lines = (detail >= 6 ? joinedLines(features, [0, 0.5, 1, 1, 2][detail - 6]) : features)
       .filter((f) => LINES.includes(f.layer))
       .sort((a, b) => roadWidth(a.kind, z) - roadWidth(b.kind, z));
     for (const f of lines) {
       if (detail >= 3 && /path|foot|cycle|service|tram/.test(f.kind)) continue;
+      if (detail >= 5 && f.layer === "pier_lines") continue;
+      if (detail >= 6 && f.layer === "boundaries") continue;
+      if (detail >= 7 && f.layer === "water_lines" && f.kind === "canal") continue;
+      if (detail >= 7 && f.layer === "streets" && roadWidth(f.kind, z) < 2.4) continue;
       if (detail >= 5 && f.layer === "streets" && roadWidth(f.kind, z) < 1.8) continue;
-      const paths = f.rings.map((r) => simplify(r, epsilon));
+      const paths = f.rings.map((r) => simplify(r, Math.min(epsilon, 2)));
       const width = roadWidth(f.kind, z);
+      drawing.priority = f.layer === "streets" ? width * 1e7 : 1e6;
       if (f.layer === "streets") {
-        for (const p of paths) mesh.line(p, width + (detail >= 1 ? 0.3 : 0.6), EDGE);
-        for (const p of paths) mesh.line(p, width, /motorway|trunk|primary|secondary/.test(f.kind) ? MAIN : ROAD);
+        if (detail < 6) for (const p of paths) drawing.line(p, width + (detail >= 1 ? 0.3 : 0.6), EDGE);
+        for (const p of paths) drawing.line(p, width, /motorway|trunk|primary|secondary/.test(f.kind) ? MAIN : ROAD);
       } else
         for (const p of paths)
-          mesh.line(p, f.layer === "water_lines" ? 0.8 : 0.5, f.layer === "water_lines" ? WATER : EDGE);
+          drawing.line(p, f.layer === "water_lines" ? 0.8 : 0.5, f.layer === "water_lines" ? WATER : EDGE);
     }
+    const mesh = drawing instanceof BudgetMeshBuilder ? drawing.finish() : drawing;
     if (mesh.points.length <= 4096 && mesh.faces.length <= 2048) {
       const picked = labels.sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name)).slice(0, 512);
       return {
