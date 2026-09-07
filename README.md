@@ -72,7 +72,15 @@ queue; it is not a device-render receipt.
 
 The Mac keeps connection management separate from native decoding and network work. If the capability process exits, it is reaped and replaced on reconnect. Socket backpressure pauses traffic; cancelling a sent device request retains its wire credit until a reply or disconnection.
 
-Typing, dragging, inertia and zoom transitions update locally. Missing tiles show a fallback; an already loaded previous zoom level stays visible during replacement. A disconnected Mac leaves resident tiles navigable. Search, new tiles and uncached labels require the Mac, including in Hyrule mode. Offline here means independent of internet map services, not independent of the paired Mac.
+Typing, dragging, inertia and zoom transitions update locally. Missing tiles show a fallback; an already loaded previous zoom level stays visible during replacement. The optional [Hyrule SD pack](docs/SD_MAP.md) lets the 3DS open and load the entire terrain atlas without a Mac. Search, saved places, OSM and dynamic labels still use the paired host. Without the pack, a disconnected Mac leaves only resident tiles navigable.
+
+## Hyrule on the 3DS SD card
+
+After preparing the Mac atlas, run `bun run prepare:sd` and
+`bun run deploy:sd <3ds-ip>` to install a **354 MiB** prepared texture pack.
+The console reads and inflates individual records on a native worker; terrain
+misses no longer require Wi-Fi. See [installation, storage costs and the device
+comparison procedure](docs/SD_MAP.md).
 
 ## Complete local Hyrule atlas
 

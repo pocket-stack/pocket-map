@@ -1,0 +1,49 @@
+{
+  "$schema": "https://pocketjs.dev/schema/pocket-2.json",
+  "pocket": 2,
+  "id": "dev.pocket-stack.map",
+  "name": "pocket-map",
+  "title": "Pocket Map Storage Test",
+  "version": "0.1.0",
+  "engine": {
+    "capabilities": {
+      "requires": [
+        "io.offload",
+        "text.glyphs.baked",
+        "input.buttons",
+        "display.auxiliary",
+        "input.touch.auxiliary"
+      ],
+      "enhances": [
+        "io.resource-pack",
+        "input.analog.left",
+        "input.analog.right"
+      ]
+    }
+  },
+  "app": {
+    "entry": "test/device/sd-benchmark.tsx",
+    "output": "pocketmap-sd-benchmark",
+    "framework": "solid",
+    "viewport": {
+      "fixed": {
+        "logical": [
+          400,
+          240
+        ],
+        "presentation": "native"
+      }
+    },
+    "surfaces": {
+      "auxiliary": {
+        "fixed": {
+          "logical": [
+            320,
+            240
+          ],
+          "presentation": "native"
+        }
+      }
+    }
+  }
+}

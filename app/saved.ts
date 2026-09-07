@@ -9,7 +9,7 @@ export type MapMode = "map" | "search" | "results" | "about" | "saved" | "name" 
 export function validPlaces(rows: unknown): rows is Place[] {
   return Array.isArray(rows) && rows.length <= 5 && rows.every(p => p && typeof p.id === "string" && p.id.length <= 80 && typeof p.name === "string" && p.name.length <= 36 && typeof p.detail === "string" && p.detail.length <= 60 && Number.isInteger(p.zoom) && p.zoom >= 0 && p.zoom <= 18 && validPosition(p));
 }
-export function createSavedPlaces(io: ReturnType<typeof offload>, runtime: ReturnType<typeof createResourceRuntime>, mode: () => MapMode, setMode: (mode: MapMode) => void, source: () => string | undefined = () => undefined) {
+export function createSavedPlaces(io: ReturnType<typeof offload>, runtime: ReturnType<typeof createResourceRuntime>, mode: () => MapMode, setMode: (mode: MapMode) => void, source: () => string | undefined = () => undefined, reads = io) {
   const [offset, setOffset] = createSignal(0), [selection, setSelection] = createSignal(0);
   const [name, setName] = createSignal(""), [editing, setEditing] = createSignal<Place>();
   const [busy, setBusy] = createSignal(false), [error, setError] = createSignal("");
@@ -17,7 +17,7 @@ export function createSavedPlaces(io: ReturnType<typeof offload>, runtime: Retur
   let target: Place | undefined, returnMode: MapMode = "map", request = 0, last: BookmarkCommand | undefined;
   const collection = runtime.createCollection({ key: (offset: number) => `${source()}/${offset}`, maxEntries: 4, maxViews: 1, maxDemandsPerView: 1,
     maxCost: 4 * 8192, cost: () => 8192, maxResponseBytes: 5000, retry: { attempts: 2, delayFrames: 60, maxDelayFrames: 120 },
-    load: offloadResource<number>(io, "bookmarks.list", offset => JSON.stringify({ offset, source: source() })), materialize(raw: string): BookmarkPage {
+    load: offloadResource<number>(reads, "bookmarks.list", offset => JSON.stringify({ offset, source: source() })), materialize(raw: string): BookmarkPage {
       const page = JSON.parse(raw);
       if (!page || !validPlaces(page.items) || !Number.isSafeInteger(page.offset) || page.offset < 0 || page.offset > 995 || page.offset % 5 || !Number.isSafeInteger(page.total) || page.total < 0 || page.total > 1000 || page.items.length !== Math.min(5, Math.max(0, page.total - page.offset))) throw new Error("Invalid saved places response");
       return page;

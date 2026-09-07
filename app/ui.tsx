@@ -132,7 +132,7 @@ function Deck(p: { s: MapModel }) {
     <View class="absolute left-0 top-0 w-full h-[38] bg-gradient-to-b from-[#eef3f9] to-[#b5c5d8]" />
     {search}
     <View class="absolute left-[72] top-[6] w-[242] h-[28] rounded-[5] border border-[#91a3ba] bg-white overflow-hidden" style={{ display: typing() || results() ? 0 : 1 }}>
-      <Text class="absolute left-[7] top-[7] text-xs text-[#354d67]">{typing() ? `${(naming() ? p.s.saved.name() : p.s.query()).slice(-31)}|` : saved() ? "Saved on your paired Mac" : results() ? p.s.query().slice(0, 32) : p.s.online() ? p.s.planar() ? "Hyrule - Breath of the Wild" : "Explore with your Nintendo 3DS" : "Waiting for paired Mac"}</Text>
+      <Text class="absolute left-[7] top-[7] text-xs text-[#354d67]">{typing() ? `${(naming() ? p.s.saved.name() : p.s.query()).slice(-31)}|` : saved() ? "Saved on your paired Mac" : results() ? p.s.query().slice(0, 32) : p.s.localMapAvailable() && !p.s.online() ? "Hyrule on SD - Mac for search & saves" : p.s.online() ? p.s.planar() ? "Hyrule - Breath of the Wild" : "Explore with your Nintendo 3DS" : "Waiting for paired Mac"}</Text>
     </View>
     <ClassicButton debugName="MapSourceButton" label={p.s.switching() ? "Opening map..." : `Map: ${p.s.planar() ? "Hyrule" : "OpenStreetMap"}`} surface="auxiliary" style={{ ...box(72, 6, 242, 28), display: typing() || results() ? 1 : 0 }} disabled={blocked() || !p.s.maps().length} onPress={p.s.openSources} />
     <Show when={p.s.choosing()}><View style={box(6, 40, 308, 194)}>
@@ -171,7 +171,7 @@ export default function MapApp() {
       <Text ref={scaleText} class="absolute left-[5] top-[1] w-[70] h-[14] text-xs text-[#374c58]">500 m</Text>
       <View ref={bar} style={{ ...box(5, 19, 70, 3), bgColor: "#374c58", originX: -0.5 }} />
     </View>
-    <Show when={!s.online() || !s.info() || s.switching()}><View class="absolute left-[86] top-[102] w-[228] h-[37] rounded-[5] border border-[#a4b2be] bg-[#fffffff0]">
+    <Show when={(!s.online() && !s.localMapAvailable()) || !s.info() || s.switching()}><View class="absolute left-[86] top-[102] w-[228] h-[37] rounded-[5] border border-[#a4b2be] bg-[#fffffff0]">
       <Text class="absolute left-[6] right-[6] top-[12] text-xs text-center text-[#52667a]">{s.status().slice(0, 35)}</Text>
     </View></Show>
     <Show when={s.mode() === "name" && !s.saved.editing()}><View class="absolute left-[194] top-[114] w-[12] h-[12]">
