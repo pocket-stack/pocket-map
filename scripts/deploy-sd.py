@@ -36,6 +36,7 @@ if not installed:
             try: offset = ftp.size(partial) or 0
             except ftplib.error_perm: offset = 0
             if offset > local.stat().st_size: raise RuntimeError('Oversized partial atlas')
+            if offset == local.stat().st_size: break
             progress = [offset, time.monotonic()]
             def sent(block):
                 progress[0] += len(block)
@@ -57,14 +58,29 @@ else:
     target = remote
 digest = hashlib.sha256()
 progress = [0, time.monotonic()]
+first_difference = None
 def received(block):
+    global first_difference
+    original = source.read(len(block))
+    if first_difference is None and block != original:
+        first_difference = progress[0] + next(
+            (i for i, (a, b) in enumerate(zip(block, original)) if a != b),
+            min(len(block), len(original)))
     digest.update(block)
     progress[0] += len(block)
     if time.monotonic() - progress[1] > 10:
         print(f'Verify {progress[0]}/{local.stat().st_size} bytes', flush=True)
         progress[1] = time.monotonic()
-ftp.retrbinary('RETR ' + target, received, 65536)
-assert progress[0] == local.stat().st_size and digest.hexdigest() == expected, 'Atlas readback differs'
+with local.open('rb') as source:
+    ftp.retrbinary('RETR ' + target, received, 65536, rest=0)
+verification = dict(path=target, bytes=progress[0], expectedBytes=local.stat().st_size,
+                    sha256=digest.hexdigest(), expectedSha256=expected,
+                    firstDifference=first_difference)
+(root / 'dist/qa').mkdir(parents=True, exist_ok=True)
+(root / 'dist/qa/sd-verify.json').write_text(json.dumps(verification, indent=2))
+if progress[0] != local.stat().st_size or digest.hexdigest() != expected:
+    ftp.close()
+    raise RuntimeError('Atlas readback differs: ' + json.dumps(verification))
 if not installed:
     ftp.rename(partial, remote)
 # The small bootstrap pointer becomes visible only after its complete atlas.
