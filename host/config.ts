@@ -1,5 +1,5 @@
-export interface ProviderConfig { tileURL: string; searchURL: string; name: string; attribution: string; maxZoom: number; cache: string; kind?: "osm" | "hyrule"; atlas?: string }
+export interface ProviderConfig { tileURL: string; format?: "raster" | "vector"; dataZoom?: number; searchURL: string; name: string; attribution: string; maxZoom: number; cache: string; kind?: "osm" | "hyrule"; atlas?: string }
 export const defaultConfig: ProviderConfig = {
-  tileURL: "https://tile.openstreetmap.de/{z}/{x}/{y}.png", searchURL: "https://photon.komoot.io/api/",
-  name: "OpenStreetMap DE", attribution: "OpenStreetMap contributors", maxZoom: 18, cache: ".local/cache.sqlite",
+  tileURL: "https://tiles.versatiles.org/tiles/osm/{z}/{x}/{y}", format: "vector", dataZoom: 14, searchURL: "https://photon.komoot.io/api/",
+  name: "OpenStreetMap", attribution: "OpenStreetMap contributors", maxZoom: 18, cache: ".local/cache.sqlite",
 };

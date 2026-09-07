@@ -1,19 +1,24 @@
 # Pocket Map
 
-A map browser for Nintendo 3DS, built with [PocketJS](https://github.com/pocket-stack/pocketjs) and SolidJS 1.9. Explore the complete Hyrule map from **The Legend of Zelda: Breath of the Wild**, search 2,576 places, pan with the resistive touchpad, zoom and save locations. The paired Mac stores the complete atlas and search index. Browsing requires the LAN connection but makes **no internet requests**. An optional OpenStreetMap / Photon provider remains available.
+A map browser for Nintendo 3DS, built with [PocketJS](https://github.com/pocket-stack/pocketjs) and SolidJS 1.9. Browse **OSM vector maps** or the complete Hyrule map from **The Legend of Zelda: Breath of the Wild**. Pan with the resistive touchpad, zoom, search and save places on the paired Mac.
 
-<p><img src="docs/images/hyrule.png" width="320" alt="Pocket Map displaying the local Hyrule atlas on a compiled dual-screen guest" /> <img src="docs/images/hyrule-search.png" width="320" alt="Local Kakariko search results with the bottom-screen selection touchpad" /></p>
+The Mac fetches OSM vector tiles, prepares bounded geometry and streams it to the 3DS GPU drawing path. Four real San Francisco tiles used **79.5% fewer terrain bytes** than the previous raw bitmap path; z14 geometry is reused through display z18. Hyrule retains its complete local raster atlas and 2,576 searchable places, with no internet requests while browsing. See [vector architecture, measurements and limits](docs/VECTOR_MAP.md).
+
+<p><img src="docs/images/vector-osm.png" width="320" alt="Actual San Francisco vector data rendered by the compiled dual-screen Pocket Map guest" /> <img src="docs/images/hyrule.png" width="320" alt="Pocket Map displaying the local Hyrule atlas on a compiled dual-screen guest" /> <img src="docs/images/hyrule-search.png" width="320" alt="Local Kakariko search results with the bottom-screen selection touchpad" /></p>
+
+OSM map data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright), served as Shortbread vectors by VersaTiles.
 
 These are **compiled guest + Wasm captures**, at the 3DS's 400×240 / 320×240 logical resolutions, not console photographs. Map artwork belongs to Nintendo; the pinned atlas and marker source is [Zelda Dungeon's map repository](https://github.com/zeldadungeon/maps/tree/d32a85656031d861cef38e32eb927a7d08a983a9/public/botw). Downloaded assets and generated databases stay outside Git.
 
 ## Try it
 
-Requirements: Bun 1.3.14, Docker with the PocketJS 3DS toolchain (or a supported native devkitPro install), Git, a Mac and a 3DS on the same LAN, Homebrew Launcher and ftpd. The runtime submodule pins the image-resource support used by this app.
+Requirements: Bun 1.3.14, Docker with the PocketJS 3DS toolchain (or a supported native devkitPro install), Git, a Mac and a 3DS on the same LAN, Homebrew Launcher and ftpd. The runtime submodule pins the mesh and image resource support used by this app.
 
 ```sh
 git clone --recurse-submodules https://github.com/pocket-stack/pocket-map.git
 cd pocket-map
 cd runtime && bun install --frozen-lockfile && cd ..
+bun install --frozen-lockfile
 bun run setup
 bun run prepare:hyrule
 bun run 3ds
@@ -107,7 +112,7 @@ Regions appear at wide zooms; detailed items such as Koroks and treasures appear
 from level 6. The Mac performs spatial queries and density selection. The guest
 receives bounded point/name/category records and draws small baked icons plus
 text locally, so labels move with the map without another network round trip.
-OSM's place labels remain part of its base tile images.
+OSM labels are independent of terrain geometry. Its menu offers Show / Hide labels; ASCII uses the shared local glyph atlas, with a cached image fallback for other scripts.
 
 `prepare:hyrule` refreshes the separate marker index without rebaking existing
 terrain textures. Marker assets and SQLite stay outside Git; the small UI icons
@@ -129,50 +134,51 @@ place. Cancel after an unconfirmed command does not undo a Mac write; reopen
 Saved to check its outcome. A connected Mac is needed for writes. The guest
 retains up to four previously viewed pages during a disconnection.
 
-## Optional OpenStreetMap provider
+## OpenStreetMap vector provider
 
-Start `bun run host <3ds-ip> --osm` to use the geographic provider. Its configuration uses `https://tile.openstreetmap.de/{z}/{x}/{y}.png` and `https://photon.komoot.io/api/`, both verified reachable from the development Mac. The main `tile.openstreetmap.org` endpoint failed to connect in that network. No API keys are required by the selected demo endpoints.
+Start `bun run host <3ds-ip> --osm` to open OSM first. Hyrule remains available
+from the source picker when its atlas is installed. For an OSM-only setup, skip
+`prepare:hyrule` and use `--osm`.
 
-Override OSM settings in `.local/provider.json`, then restart the host with `--osm`:
+The default uses [VersaTiles' public Shortbread MVTs](https://docs.versatiles.org/guides/use_tiles_versatiles_org.html)
+and [Photon place search](https://github.com/komoot/photon#demo-server), without
+API keys. The Mac caches responses in SQLite, preserves HTTP validators and
+prepares geometry in its isolated capability process. Search requires an
+explicit submit and has a 1.1-second minimum interval.
 
-```json
-{
-  "tileURL": "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-  "searchURL": "https://photon.komoot.io/api/",
-  "name": "OpenStreetMap",
-  "attribution": "OpenStreetMap contributors",
-  "maxZoom": 18
-}
-```
+Override the Shortbread endpoint in ignored `.local/provider.json`, then restart
+the daemon. [VECTOR_MAP.md](docs/VECTOR_MAP.md#provider-configuration) includes an
+OSM official endpoint example, protocol details, provider requirements and
+measurement limits. Source z14 geometry remains resident while zooming through
+z18; street-label windows query the same prepared source data.
 
-The tile endpoint must return 256px PNGs; the search endpoint must implement the Photon response shape. HTTPS and loopback HTTP development endpoints are supported. The device sends typed tile coordinates, not arbitrary URLs. Tile identities include a hash of the source URL and rendition version.
-
-Public services have limited capacity: [OSM DE's terms](https://openstreetmap.de/germanstyle/#nutzungsbedingungen), [tile usage policy](https://operations.osmfoundation.org/policies/tiles/), and [Photon's demo policy](https://github.com/komoot/photon#demo-server) apply. **The current viewport has priority; at most four nearby tiles provide short-range look-ahead.** The margin is 128 screen pixels and movement prediction is capped at 128 pixels; there is no area downloader or multi-level pre-seeding. The OSM DE service documents per-IP throttling after an unspecified high-speed tile allowance; a slow response does not necessarily produce HTTP 429. Searches require an explicit submit and are limited to one per 1.1 seconds on this provider. The Mac honors HTTP cache headers and conditional requests, using seven days for tiles without freshness headers. Use an appropriate hosted or self-hosted service before scaling beyond this personal demo. Endpoint configuration allows that switch without rebuilding the 3DS app.
+Custom 256px PNG endpoints remain supported with `"format": "raster"`. Hyrule's
+complete local JPEG-derived atlas stays on the R5G6B5 image path.
 
 ## Architecture and resource pattern
 
-```text
-3DS UI thread                 3DS network worker          Mac capability process
-camera + controls             authenticated TCP           local atlas / optional HTTPS
-visible tile demand      ->   bounded request queue   ->  SQLite textures + place index
-ResourceImage fallback   <-   native image tickets    <-  binary R5G6B5 pixels
-one image upload/frame        eight staging slots         bounded tile/label output
-```
-
-The app uses `createOffloadImageCollection` to declare the tile identity and rendition once. View owners declare demand; reads subscribe by key. The runtime merges demands, schedules requests, retries failed reads, uploads within the frame budget and frees textures on eviction. Cancelling a response before upload returns its native staging slot.
+The app defines separate image and geometry collections. Both use the same
+scheduler, view-demand merging, retry, fallback and eviction lifecycle:
 
 ```ts
-const tiles = createOffloadImageCollection(runtime, io, {
+const tiles = createOffloadMeshCollection(runtime, io, {
   key: (tile: TileInput) => `${tile.source}/${tile.z}/${tile.x}/${tile.y}`,
-  method: "map.tile", payload: JSON.stringify,
-  width: 256, height: 256, maxEntries: 40,
-  maxViews: 2, maxDemandsPerView: 24,
+  method: "map.mesh", payload: JSON.stringify,
+  maxEntries: 40, maxViews: 2, maxDemandsPerView: 24,
 });
 const view = createResourceView(tiles, { demand: visibleTileDemand });
-// <ResourceImage state={() => view.state(tile)} fallback={() => <TileSkeleton />} />
+// <ResourceMesh state={() => view.state(tile)} fallback={() => <TileSkeleton />} />
 ```
 
-Map-specific behavior remains in [app/model.ts](app/model.ts) and [app/geo.ts](app/geo.ts): coordinate systems, visible priorities, selection and search. [host/atlas.ts](host/atlas.ts) reads the prepared Hyrule atlas; [host/provider.ts](host/provider.ts) and [host/cache.ts](host/cache.ts) implement the optional HTTP provider. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) records budgets, lifecycle and tradeoffs.
+Hyrule declares `createOffloadImageCollection` and renders `ResourceImage`.
+Rendering starts no IO. The native worker owns reception; the scheduler admits
+one materialization per frame; the collection returns staging and eventually
+frees its native handles.
+
+Map-specific policy remains in [app/model.ts](app/model.ts), [app/prediction.ts](app/prediction.ts)
+and [app/annotations.ts](app/annotations.ts). [host/vector-geometry.ts](host/vector-geometry.ts)
+prepares OSM geometry; [host/atlas.ts](host/atlas.ts) reads Hyrule textures.
+[ARCHITECTURE.md](docs/ARCHITECTURE.md) records budgets and lifecycle.
 
 ## Validation
 
@@ -181,7 +187,8 @@ bun run check
 runtime/node_modules/.bin/tsc --noEmit
 bun run sim              # compiled guest, synthetic OSM provider, interaction replay
 bun run sim --hyrule     # complete local atlas, search and delayed-response navigation
-bun run sim --live       # current live viewport + one explicit place search
+bun scripts/vector-sim.ts
+bun scripts/vector-sim.ts --live  # a small real vector viewport, cached on Mac
 qjs --std --stack-size 131072 scripts/quickjs-smoke.js
 qjs --std --stack-size 131072 scripts/quickjs-smoke.js runtime/dist/3ds/guest/pocketmap-main.js hyrule
 ```

@@ -10,7 +10,7 @@ PocketJS `hot` APIs; a tile window change updates the component tree.
 
 The native offload worker owns sockets, the SD pairing-key read and binary
 reception. The paired Mac's capability process owns SQLite atlas reads, texture
-decompression, optional HTTPS/PNG decoding and Unicode label rasterization.
+decompression, HTTPS/MVT parsing, styling, simplification, polygon triangulation and Unicode label rasterization. Custom raster sources retain the PNG decoder.
 Atlas preparation performs JPEG decoding and R5G6B5 packing before browsing.
 Provider socket callbacks pass
 bounded requests and replies; they do not execute these capabilities.
@@ -23,16 +23,19 @@ bounded requests and replies; they do not execute these capabilities.
 | Resource starts / materializations | 1 / 1 per frame |
 | Tile collection | 40 entries, two view owners |
 | Tile demand per view | 24 addresses (up to 12 visible + 12 local look-ahead; OSM extras capped at four) |
-| Native image staging | 8 × 131,088 bytes plus metadata |
+| Shared image / mesh staging | 8 × 131,088 bytes plus metadata |
 | Native image envelope | 16–256px power-of-two sides, two bytes per pixel |
-| Native image uploads | 1 per frame |
+| Native image or mesh materializations | 1 per frame |
 | Places per search | 5 |
 | Saved places | 1,000 on Mac; four five-place pages cached on device |
 | Saved-place name | 36 UTF-16 code units |
-| Marker resource cache | 12 windows; at most four demanded, 12 records per window |
+| Label resource cache | 40 windows; at most 12 demanded, 12 records per window (Hyrule demands at most four) |
 | Query text | 80 UTF-16 code units |
-| Unicode label collection | 5 × 256×32 images |
+| Unicode label collection | 24 × 256×32 images; at most 12 map labels visible |
 | Mac concurrent tile decodes | 3 |
+| Mac prepared geometry cache | 128 source tiles, honoring expiry |
+| Native mesh entry | 4,096 vertices; 2,048 triangles; 36,880 wire bytes |
+| Retained GPU geometry | 8 MiB including pending retirement; at most 196,608 bytes per mesh |
 | Mac decoded-image cache | 128 immutable atlas textures; 64 HTTP renditions honoring expiry |
 | Mac HTTP cache | 2,048 bounded responses in SQLite |
 | Mac transport credit | Eight total executing requests, queued replies and blocked writes |
@@ -61,13 +64,17 @@ and 2,500-code-unit payload limits.
    layers' demand and reserves entry cost before starting an offload read.
 3. The Mac looks up an already baked Hyrule texture in SQLite and decompresses
    it to exactly 131,072 bytes, or returns a decoded-cache hit. This provider has
-   no HTTP path. The optional OSM provider reads a cached PNG or fetches it with
-   HTTP validators, validates dimensions, decodes and packs R5G6B5 pixels.
-4. The 3DS worker receives binary pixels into a free native slot and publishes
+   no HTTP path. The OSM provider reads or fetches an MVT using HTTP validators,
+   decodes PBF, applies a bounded detail policy and prepares indexed geometry.
+   Geometry at source z14 serves display levels through z18.
+4. The 3DS worker receives binary pixels or geometry into a free native slot and publishes
    a small ticket. Socket reads pause when staging credit is exhausted.
 5. The scheduler materializes one completed resource per frame. The native
-   upload consumes no JS pixel array; `ResourceImage` replaces its fallback.
-6. `releaseResponse` returns staging credit. Texture disposal waits until
+   upload consumes no JS pixel or vertex array; `ResourceImage` or `ResourceMesh`
+   replaces its fallback. Mesh materialization also uploads an immutable GPU
+   buffer. Drawing submits a handle, transform and clip rectangle; eviction
+   frees the buffer after the preceding GPU frame retires.
+6. `releaseResponse` returns staging credit. Texture / mesh disposal waits until
    cache eviction or invalidation with value removal. A cancelled or late
    response also returns staging credit without an upload.
 
@@ -201,3 +208,5 @@ cache costs and view ownership. Names and category icons are drawn locally at
 constant screen size; only their transforms change during motion. No bitmap is
 requested for every label or every frame. Icon assets are compiled into the
 package. An annotation cache failure leaves terrain navigation available.
+
+The [vector map design](VECTOR_MAP.md) documents source selection, geometry format, label windows, GPU/CPU responsibilities and measured bandwidth.

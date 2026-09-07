@@ -1,7 +1,7 @@
 export type MapKind = "hyrule" | "osm";
 export type Position = { space?: "mercator"; lat: number; lon: number } | { space: "planar"; x: number; y: number };
 export type Place = Position & { id: string; name: string; detail: string; zoom: number };
-export interface MapInfo { source: string; name: string; attribution: string; maxZoom: number; minZoom?: number;
+export interface MapInfo { source: string; name: string; attribution: string; maxZoom: number; render?: "mesh"; prefetch?: boolean; dataZoom?: number; minZoom?: number;
   space?: "mercator" | "planar"; home?: Place; local?: boolean; markers?: boolean; kind?: MapKind; maps?: { kind: MapKind; name: string }[] }
 export interface TileInput { source: string; z: number; x: number; y: number }
 export type SearchInput = Position & { query: string; source?: string };

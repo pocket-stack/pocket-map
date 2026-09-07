@@ -5,13 +5,15 @@ const replies = [], tickets = new Set(), saved = [];
 globalThis.ui = { __host: "3ds-dev", __hostAbi: 8, __viewport: { w: 400, h: 240 }, __auxiliarySurface: { root: 2, w: 320, h: 240 },
   __textures: { "shift.svg": 0, "shift-lock.svg": 1, "map-pad.svg": 2, "map-pin.svg": 3 }, __sprites: {}, createNode: () => node++, measureText: text => text.length * 7 };
 for (const name of ["landmark", "tower", "shrine", "stable", "village", "seed", "treasure", "enemy", "special"]) ui.__textures[`marker-${name}.svg`] = 4 + Object.keys(ui.__textures).length;
-for (const name of ["destroyNode", "insertBefore", "removeChild", "setStyle", "setProp", "setPropBatch", "setText", "replaceText", "uploadTexture", "setImage", "setSprite", "animate", "cancelAnim", "setFocus", "setActive", "hitTest", "hitTestBounds", "hitTestAuxiliary", "hitTestBoundsAuxiliary", "setCursor", "setCursorPos", "loadStyles", "loadFontAtlas", "loadTileTexture", "freeTexture", "uploadImgEntry", "debugInspect", "debugRectXY", "debugRectWH", "debugPause", "debugStep", "debugStats", "__dbgActive", "__dbgPoll", "__dbgSend", "__dbgShot"]) ui[name] = () => 0;
+for (const name of ["destroyNode", "insertBefore", "removeChild", "setStyle", "setProp", "setPropBatch", "setText", "replaceText", "uploadTexture", "setImage", "setMesh", "freeMesh", "setSprite", "animate", "cancelAnim", "setFocus", "setActive", "hitTest", "hitTestBounds", "hitTestAuxiliary", "hitTestBoundsAuxiliary", "setCursor", "setCursorPos", "loadStyles", "loadFontAtlas", "loadTileTexture", "freeTexture", "uploadImgEntry", "debugInspect", "debugRectXY", "debugRectWH", "debugPause", "debugStep", "debugStats", "__dbgActive", "__dbgPoll", "__dbgSend", "__dbgShot"]) ui[name] = () => 0;
 globalThis.offload = {
   session: () => session, take: () => replies.shift(),
+  uploadMesh: id => tickets.has(id) ? texture++ : -1, releaseMesh: id => tickets.delete(id),
   uploadImage: id => tickets.has(id) ? texture++ : -1, releaseImage: id => tickets.delete(id),
   submit(raw) {
     const r = JSON.parse(raw);
-    if (r.response === "image") { const id = token++; tickets.add(id); replies.push(JSON.stringify({ id: r.id, image: { token: id, width: 256, height: r.method === "map.label" ? 32 : 256 } })); }
+    if (r.response === "mesh") { const id=token++;tickets.add(id);replies.push(JSON.stringify({id:r.id,mesh:{token:id,width:256,height:256,bytes:16}})); }
+    else if (r.response === "image") { const id = token++; tickets.add(id); replies.push(JSON.stringify({ id: r.id, image: { token: id, width: 256, height: r.method === "map.label" ? 32 : 256 } })); }
     else {
       let value;
       if (r.method === "map.info") currentHyrule = JSON.parse(r.payload).kind ? JSON.parse(r.payload).kind === "hyrule" : hyrule;
@@ -23,8 +25,8 @@ globalThis.offload = {
         else saved.length = 0;
         value = { id };
       } else if (r.method === "map.markers") value = [[1, "Sheikah Tower", "tower", 108, 168], [2, "Shrine of Resurrection", "shrine", 108.5, 168.5]];
-      else value = r.method === "map.info" ? { source: currentHyrule ? "0123456789abcdef" : "abcdef0123456789", kind: currentHyrule ? "hyrule" : "osm", markers: currentHyrule, maps: [{ kind: "hyrule", name: "Hyrule" }, { kind: "osm", name: "OSM" }], name: "Smoke map", attribution: "Test", maxZoom: currentHyrule ? 7 : 18,
-        ...(currentHyrule ? { minZoom: 0, space: "planar", local: true, home: { id: "home", name: "Plateau", detail: "Test", space: "planar", x: 108, y: 168, zoom: 4 } } : {}) }
+      else value = r.method === "map.info" ? { source: currentHyrule ? "0123456789abcdef" : "abcdef0123456789", kind: currentHyrule ? "hyrule" : "osm", markers: true, maps: [{ kind: "hyrule", name: "Hyrule" }, { kind: "osm", name: "OSM" }], name: "Smoke map", attribution: "Test", maxZoom: currentHyrule ? 7 : 18,
+        ...(currentHyrule ? { minZoom: 0, space: "planar", local: true, home: { id: "home", name: "Plateau", detail: "Test", space: "planar", x: 108, y: 168, zoom: 4 } } : {render:"mesh",dataZoom:14}) }
         : [hyrule ? { id: "one", name: "Kakariko", detail: "Hyrule", space: "planar", x: 166, y: 149, zoom: 6 } : { id: "one", name: "Tokyo", detail: "Japan", lat: 35.68, lon: 139.76, zoom: 14 }];
       replies.push(JSON.stringify({ id: r.id, payload: JSON.stringify(value) }));
     }
@@ -50,7 +52,7 @@ try {
   frames(1, 0x400); frames(1, 0x400 | 0x10); frames(20, 0x400); check(s.zoomHeld(), "ZL rail mount"); frames(1);
   s.openSources(); frames(2); check(s.mode() === "sources", "source picker mount"); s.choose(hyrule ? 1 : 0); frames(80);
   check(s.planar() !== hyrule, "hot source switch"); s.openSources(); s.choose(hyrule ? 0 : 1); frames(80);
-  s.setMode("layers"); frames(2); s.choose(4); frames(1); check(s.annotations.layer() === "off", "label filter mount");
+  s.setMode("layers"); frames(2); s.choose(s.vector()?1:4); frames(1); check(s.annotations.layer() === "off", "label filter mount");
   session = -1; frames(30); session = 2; frames(100);
   check(s.diagnostics().tiles.entries <= 40 && tickets.size === 0, "resource ownership");
   std.puts(JSON.stringify({ ok: true, frames: ticks, nodeIds: node, uploads: texture, pendingTickets: tickets.size }) + "\n");

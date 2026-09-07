@@ -1,12 +1,13 @@
 import { createSignal, For, Show } from "solid-js";
 import { AuxiliarySurface, Image, Text, View, type NodeMirror } from "@pocketjs/framework/components";
 import { ClassicButton, ClassicFace, ClassicPanel, ClassicSheet } from "@pocketjs/framework/classic";
-import { ResourceImage } from "@pocketjs/framework/resource";
+import { ResourceImage, ResourceMesh } from "@pocketjs/framework/resource";
 import { createResourceView } from "@pocketjs/framework/resource-view";
 import { createGesture, createDragFilter } from "@pocketjs/framework/gesture";
 import { simulationHz } from "@pocketjs/framework/clock";
 import { onFrame } from "@pocketjs/framework/lifecycle";
 import * as hot from "@pocketjs/framework/hot";
+import {labelWidth,labelMetrics} from "./annotations.ts";
 import { createMap, MENU, type MapModel, type Layer } from "./model.ts";
 import { worldPosition, unproject, scaleBar } from "./geo.ts";
 import type { Place, MapMarker } from "../shared/types.ts";
@@ -29,24 +30,40 @@ function TileLayer(p: { s: MapModel; back?: boolean }) {
     hot.prop(world, "scaleX", scale); hot.prop(world, "scaleY", scale);
   });
   return <View ref={world} debugName={p.back ? "PreviousTiles" : "VisibleTiles"} style={{ ...box(0, 0, 1, 1), originX: -0.5, originY: -0.5 }}>
-    <For each={layer()?.tiles}>{tile => <ResourceImage debugName="MapTile" style={{ ...box(tile.column * 256 - layer()!.originX, tile.row * 256 - layer()!.originY, 256, 256), overflow: 1 }}
+    <For each={layer()?.tiles}>{tile => { const Tile = p.s.vector() ? ResourceMesh : ResourceImage; return <Tile debugName="MapTile" style={{ ...box(tile.column * 256 - layer()!.originX, tile.row * 256 - layer()!.originY, 256, 256), overflow: 1 }}
       state={() => resources.state(tile.input)} fallback={() => p.back || p.s.back() ? <View /> : <View class="w-full h-full bg-[#e6e7de]">
         <View class="absolute left-[30] top-0 w-[3] h-full bg-[#f5f4eb]" /><View class="absolute left-0 top-[94] w-full h-[3] bg-[#f5f4eb]" />
         <View class="absolute left-[65] top-[114] w-[108] h-[8] rounded-[3] bg-[#d4d8cb] animate-pulse" />
-      </View>} errorFallback={() => <View class="w-full h-full bg-[#e6e7de]"><Text class="absolute left-[60] top-[112] text-xs text-[#73796c]">Tile unavailable</Text></View>} />}</For>
+      </View>} errorFallback={() => <View class="w-full h-full bg-[#e6e7de]"><Text class="absolute left-[60] top-[112] text-xs text-[#73796c]">Tile unavailable</Text></View>} />; }}</For>
   </View>;
+}
+function UnicodeAnnotation(p:{s:MapModel;place:Place;width:number}) {
+  const image=createResourceView(p.s.labels,{demand:()=>[{input:p.place,priority:30,pin:true}]});
+  return <ResourceImage style={{...box(0,0,p.width,16),overflow:1}} state={()=>image.state(p.place)} fallback={()=><View class="w-full h-full rounded-[2] bg-[#e1e3d4] animate-pulse" />} />;
 }
 function Annotation(p: { s: MapModel; marker: MapMarker }) {
   let root: NodeMirror | undefined;
+  const [visible,setVisible]=createSignal(false);
+  const vector=p.s.vector(),unicode=vector && /[^\x20-\x7e]/.test(p.marker[1]);
+  const place:Place={id:`label:${p.marker[0]}`,name:labelMetrics(p.marker[1]).text,detail:"",lat:0,lon:0,zoom:14};
+  const width=vector?labelWidth(p.marker[1]):118;
   onFrame(() => {
+    if(vector){const at=p.s.annotations.placement(p.marker[0]);setVisible(!!at);hot.prop(root,"display",at?0:1);if(at){hot.prop(root,"translateX",at.x);hot.prop(root,"translateY",at.y);}return;}
     const v = p.s.camera.view(), x = 200 + (p.marker[3] - v.x) * v.scale, y = 120 + (p.marker[4] - v.y) * v.scale;
     hot.prop(root, "translateX", x - 7); hot.prop(root, "translateY", y - 7);
     hot.prop(root, "display", x < -100 || x > 410 || y < 18 || y > 235 ? 1 : 0);
   });
-  return <View ref={root} debugName="MapAnnotation" style={box(0, 0, 118, 17)}>
-    <View class="absolute left-[12] top-[1] w-[105] h-[14] rounded-[2] bg-[#fff8e9df]" />
-    <Image src={MARKER_ICONS[p.marker[2]]} style={box(0, 0, 15, 15)} />
-    <Text class="absolute left-[17] top-[2] text-xs text-[#3b3027]">{p.marker[1].length > 16 ? p.marker[1].slice(0, 13) + "..." : p.marker[1]}</Text>
+  return <View ref={root} debugName="MapAnnotation" style={{...box(0,0,width,17),display:vector?1:0}}>
+    <Show when={vector} fallback={<>
+      <View class="absolute left-[12] top-[1] w-[105] h-[14] rounded-[2] bg-[#fff8e9df]" />
+      <Image src={MARKER_ICONS[p.marker[2]]} style={box(0, 0, 15, 15)} />
+      <Text class="absolute left-[17] top-[2] text-xs text-[#3b3027]">{p.marker[1].length > 16 ? p.marker[1].slice(0, 13) + "..." : p.marker[1]}</Text>
+    </>}>
+      <Show when={unicode} fallback={<>
+        <View class="absolute left-0 top-0 h-[16] rounded-[2] bg-[#fffdf3df]" style={{width}} />
+        <Text class="absolute left-[4] top-[2] text-xs text-[#454438]">{labelMetrics(p.marker[1]).text}</Text>
+      </>}><Show when={visible()}><UnicodeAnnotation s={p.s} place={place} width={width} /></Show></Show>
+    </Show>
   </View>;
 }
 function ZoomRail(p: { s: MapModel }) {

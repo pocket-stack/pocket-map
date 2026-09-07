@@ -28,7 +28,7 @@ export class HttpCache {
     if (row && row.expires > now && row.bytes.byteLength <= options.maxBytes) {
       this.hits++; this.db.query("UPDATE http SET touched=? WHERE url=?").run(now, url); return row.bytes;
     }
-    const headers: Record<string, string> = { "User-Agent": "PocketMap/0.1 (+https://github.com/pocket-stack/pocket-map)", "Accept": "image/png,application/json" };
+    const headers: Record<string, string> = { "User-Agent": "PocketMap/0.1 (+https://github.com/pocket-stack/pocket-map)", "Accept": "application/vnd.mapbox-vector-tile,application/x-protobuf,image/png,application/json" };
     if (row?.etag) headers["If-None-Match"] = row.etag;
     if (row?.modified) headers["If-Modified-Since"] = row.modified;
     // Bun's redirect:error rejects 304 as well. Manual mode preserves cache

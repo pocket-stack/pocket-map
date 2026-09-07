@@ -1,32 +1,133 @@
 import { createMemo, createSignal } from "solid-js";
 import { createResourceView, type createResourceRuntime } from "@pocketjs/framework/resource-view";
 import { offloadResource } from "@pocketjs/framework/resource-offload";
+import { getOps } from "@pocketjs/framework/host";
 import { visibleTiles } from "@pocketjs/framework/tile-viewport";
 import type { offload } from "@pocketjs/framework/offload";
 import { MARKER_KINDS, type MapInfo, type MapMarker, type MarkerInput, type MarkerLayer } from "../shared/types.ts";
 export const LAYERS: { id: MarkerLayer; name: string }[] = [
-  { id: "all", name: "All map labels" }, { id: "travel", name: "Places, shrines & towers" },
-  { id: "collectibles", name: "Koroks & treasures" }, { id: "enemies", name: "Enemies" }, { id: "off", name: "Hide labels" },
+  { id: "all", name: "All map labels" },
+  { id: "travel", name: "Places, shrines & towers" },
+  { id: "collectibles", name: "Koroks & treasures" },
+  { id: "enemies", name: "Enemies" },
+  { id: "off", name: "Hide labels" },
 ];
+const metrics = new Map<string, { text: string; width: number }>();
+export function labelMetrics(name: string) {
+  const cached = metrics.get(name);
+  if (cached) return cached;
+  const unicode = /[^\x20-\x7e]/.test(name);
+  const width = (text: string) => (unicode ? text.length * 13 : getOps().measureText(text, 0));
+  let text = name;
+  while (text.length > 1 && width(text) > 166) text = text.slice(0, -1);
+  if (text !== name) {
+    text = text.slice(0, -3) + "...";
+  }
+  const result = { text, width: Math.min(174, Math.ceil(width(text)) + 8) };
+  metrics.set(name, result);
+  if (metrics.size > 256) metrics.delete(metrics.keys().next().value!);
+  return result;
+}
+export const labelWidth = (name: string) => labelMetrics(name).width;
 export function createAnnotations(io: ReturnType<typeof offload>, runtime: ReturnType<typeof createResourceRuntime>) {
-  const [layer, setLayer] = createSignal<MarkerLayer>("all"), [demand, setDemand] = createSignal<MarkerInput[]>([]);
-  const collection = runtime.createCollection({ key: (i: MarkerInput) => `${i.source}/${i.layer}/${i.z}/${i.x}/${i.y}`, maxEntries: 12, maxViews: 1, maxDemandsPerView: 4,
-    cost: () => 8192, maxCost: 12 * 8192, maxResponseBytes: 5000, load: offloadResource<MarkerInput>(io, "map.markers", JSON.stringify),
+  const [layer, setLayer] = createSignal<MarkerLayer>("all"),
+    [demand, setDemand] = createSignal<MarkerInput[]>([]);
+  const collection = runtime.createCollection({
+    key: (i: MarkerInput) => `${i.source}/${i.layer}/${i.z}/${i.x}/${i.y}`,
+    maxEntries: 40,
+    maxViews: 1,
+    maxDemandsPerView: 12,
+    cost: () => 8192,
+    maxCost: 40 * 8192,
+    maxResponseBytes: 5000,
+    load: offloadResource<MarkerInput>(io, "map.markers", JSON.stringify),
     materialize(raw: string): MapMarker[] {
       const rows = JSON.parse(raw);
-      if (!Array.isArray(rows) || rows.length > 12 || !rows.every(m => Array.isArray(m) && m.length === 5 && Number.isSafeInteger(m[0]) && typeof m[1] === "string" && m[1].length <= 24 && MARKER_KINDS.includes(m[2]) && Number.isFinite(m[3]) && Number.isFinite(m[4]) && m[3] >= 0 && m[3] < 256 && m[4] >= 0 && m[4] < 256)) throw new Error("Invalid map annotations");
+      if (
+        !Array.isArray(rows) ||
+        rows.length > 12 ||
+        !rows.every(
+          (m) =>
+            Array.isArray(m) &&
+            m.length === 5 &&
+            Number.isSafeInteger(m[0]) &&
+            typeof m[1] === "string" &&
+            m[1].length <= 24 &&
+            MARKER_KINDS.includes(m[2]) &&
+            Number.isFinite(m[3]) &&
+            Number.isFinite(m[4]) &&
+            m[3] >= 0 &&
+            m[3] < 256 &&
+            m[4] >= 0 &&
+            m[4] < 256,
+        )
+      )
+        throw new Error("Invalid map annotations");
       return rows;
-    } });
-  const view = createResourceView(collection, { demand: () => demand().map(input => ({ input, priority: 25, pin: true })) });
-  const rows = createMemo(() => demand().flatMap(i => view.value(i) ?? []));
-  return { layer, setLayer, rows,
-    reset() { setDemand([]); collection.clear(); },
+    },
+  });
+  const view = createResourceView(collection, {
+    demand: () => demand().map((input) => ({ input, priority: 25, pin: true })),
+  });
+  const rows = createMemo(() => demand().flatMap((i) => view.value(i) ?? []));
+  let placements = new Map<number, { x: number; y: number; width: number }>();
+  return {
+    layer,
+    setLayer,
+    rows,
+    placement: (id: number) => placements.get(id),
+    reset() {
+      setDemand([]);
+      collection.clear();
+    },
     update(camera: { x: number; y: number; zoom: number }, level: number, info: MapInfo) {
-      const cells = Math.max(1, 2 ** (level - 1));
-      const next: MarkerInput[] = info.markers && layer() !== "off" ? visibleTiles({ ...camera, zoom: level, level, width: 400, height: 240, tileSize: 512, maxTiles: 4 })
-        .filter(t => t.column >= 0 && t.row >= 0 && t.column < cells && t.row < cells)
-        .map(t => ({ source: info.source, z: level, x: t.column, y: t.row, layer: layer() })) : [];
-      const old = demand(); if (next.length !== old.length || next.some((v, n) => JSON.stringify(v) !== JSON.stringify(old[n]))) setDemand(next);
+      if (info.render === "mesh") level = Math.min(info.maxZoom, Math.max(0, Math.round(camera.zoom)));
+      const vector = info.render === "mesh",
+        size = vector ? 256 : 512;
+      const cells = Math.max(1, 2 ** (vector ? level : level - 1));
+      const next: MarkerInput[] =
+        info.markers && layer() !== "off"
+          ? visibleTiles({
+              ...camera,
+              zoom: vector ? camera.zoom : level,
+              level,
+              width: 400,
+              height: 240,
+              tileSize: size,
+              maxTiles: vector ? 12 : 4,
+            })
+              .filter((t) => t.row >= 0 && t.row < cells && (vector || (t.column >= 0 && t.column < cells)))
+              .map((t) => ({
+                source: info.source,
+                z: level,
+                x: vector ? ((t.column % cells) + cells) % cells : t.column,
+                y: t.row,
+                layer: layer(),
+              }))
+          : [];
+      if (vector) {
+        const placed = new Map<number, { x: number; y: number; width: number }>(),
+          names = new Set<string>();
+        for (const marker of rows()
+          .slice()
+          .sort((a, b) => Number(placements.has(b[0])) - Number(placements.has(a[0])) || a[0] - b[0])) {
+          if (placed.size >= 12 || names.has(marker[1])) continue;
+          let dx = marker[3] - camera.x;
+          dx -= Math.round(dx / 256) * 256;
+          const width = labelWidth(marker[1]),
+            x = 200 + dx * 2 ** camera.zoom - width / 2,
+            y = 120 + (marker[4] - camera.y) * 2 ** camera.zoom - 7;
+          if (x < 2 || x + width > 398 || y < 29 || y > 208) continue;
+          if ([...placed.values()].some((p) => x < p.x + p.width + 4 && x + width + 4 > p.x && Math.abs(y - p.y) < 19))
+            continue;
+          placed.set(marker[0], { x, y, width });
+          names.add(marker[1]);
+        }
+        placements = placed;
+      } else placements.clear();
+      const old = demand();
+      if (next.length !== old.length || next.some((v, n) => JSON.stringify(v) !== JSON.stringify(old[n])))
+        setDemand(next);
     },
   };
 }

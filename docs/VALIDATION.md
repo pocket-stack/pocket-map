@@ -159,3 +159,55 @@ for physical gesture or frame-time acceptance of this revision.
 The navigation build was uploaded and read back equal: 1,720,504 bytes; SHA-256
 `348e614c1016fceb175d701bd3ae14294f817367f326d13493473488e16a1e2a`.
 The Mac daemon now exposes both maps through source-identified requests.
+
+## Vector OSM reconstruction
+
+The default OSM provider now uses Shortbread MVTs. Hyrule's existing raster
+atlas, marker index, bookmarks and source switching remain available. See
+[VECTOR_MAP.md](VECTOR_MAP.md) for the execution split and measurement scope.
+
+- 18 application tests / 161 assertions pass, including holes, clipping,
+  dense geometry, HTTP deduplication, overzoom source reuse and provider policy.
+- Framework resource/offload regression: 64 tests / 682 assertions; the final
+  targeted image/mesh/offload suite also passes 22 tests / 140 assertions,
+  including the added consumer-exception cleanup case.
+- Rust core: 131 tests pass, including malformed geometry, stale handles and
+  transformed/clipped TRI output.
+- Synthetic MVT compiled-guest + Wasm replay: 1,403 frames, 13 checks; delayed
+  responses, disconnect, search, Hyrule raster switching and return to vector.
+- Real San Francisco replay: 453 frames. Four MVTs become 107,464 wire bytes of
+  prepared geometry, versus 524,368 bytes for four old raw image records.
+  Additional display zooms z15–18 send zero terrain bytes; label JSON and Unicode
+  images remain separate traffic. Receipts include those costs.
+- Existing complete-Hyrule compiled replay: 1,713 frames, 20 checks.
+- QuickJS at 128 KiB stack: both startup modes pass 1,272 frames and release all
+  staging tickets. Wasm screenshots were inspected for geometry, holes, fixed-size
+  labels, CJK text and source switching.
+
+Native `.3dsx` builds pass with the pinned nightly and devkitPro image. These
+checks establish build, protocol, resource and pixel behavior. Real 3DS input
+and frame-time acceptance of the vector revision remain pending; Wasm CPU
+numbers are not a hardware frame-rate claim.
+
+The vector build was deployed through ftpd and read back byte-for-byte equal:
+1,736,564 bytes, SHA-256
+`2f33588ba2b1081f8c86146300b5210f39b1239fa155688c20f478d04bb64130`.
+The Mac daemon starts OSM by default and keeps Hyrule available through the
+source picker. Transfer verification does not establish physical interaction
+or a measured frame rate.
+
+## Vector CPU baseline and retained GPU revision
+
+The first vector build was uploaded and connected to the physical device.
+Although terrain bandwidth decreased, warm vector views often advanced only
+40–60 frames per two-second telemetry interval. Many intervals recorded every
+frame above 16.67 ms, including periods without new tile requests. This fails
+the intended frame budget and is not evidence of continuous 60 fps.
+
+That build expanded and clipped every triangle on the CPU each frame. The
+revised 3DS backend materializes immutable GPU buffers once and emits bounded
+handle/transform/clip commands during navigation. Its telemetry splits UI/core,
+frame preparation and submission durations. Core tests cover backend opt-in,
+transform scaling, opacity fallback, off-screen culling and stale mesh handles.
+The native build and app checks pass; physical timing of this revision remains
+pending deployment and interaction.

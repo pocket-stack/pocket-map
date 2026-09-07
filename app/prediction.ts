@@ -19,7 +19,7 @@ export function createMapPrediction() {
     plan(view: View, level: number, info: MapInfo) {
       const local = info.local === true, lead = intent.predict(local ? 512 : 128), directional = lead.confidence > .45;
       const options = { ...view, level, width: 400, height: 240, maxTiles: 12, margin: local ? 256 : 128,
-        leadX: lead.x, leadY: lead.y, directional, maxExtra: local ? 12 : 4 };
+        leadX: lead.x, leadY: lead.y, directional, maxExtra: info.prefetch === false ? 0 : local ? 12 : 4 };
       const window = planTileWindow(options);
       const address = (list: typeof window.visible, z: number): PlannedTile[] => list
         .filter(t => t.row >= 0 && t.row < 2 ** z && (info.space !== "planar" || t.column >= 0 && t.column < 2 ** z))

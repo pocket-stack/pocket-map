@@ -16,14 +16,14 @@ c.fillStyle = "#e8e5d7"; c.fillRect(0, 0, 256, 256); c.fillStyle = "#b3ced7"; c.
 for (let x = 14; x < 170; x += 30) { c.fillStyle = "#fffdf4"; c.fillRect(x, 0, 5, 256); }
 for (let y = 20; y < 256; y += 32) { c.fillStyle = "#fffdf4"; c.fillRect(0, y, 170, 5); }
 c.fillStyle = "#b8cfa4"; c.fillRect(50, 70, 55, 48); c.fillStyle = "#5e705e"; c.font = "13px Arial"; c.fillText("Replay fixture", 30, 155);
-const provider = hyrule ? new AtlasProvider(".local/hyrule") : new MapProvider({ ...defaultConfig, cache: live ? ".local/cache.sqlite" : ":memory:" }, live ? fetch : (async url => {
+const provider = hyrule ? new AtlasProvider(".local/hyrule") : new MapProvider({ ...defaultConfig, format: "raster", tileURL:"https://tile.openstreetmap.de/{z}/{x}/{y}.png", cache: live ? ".local/cache.sqlite" : ":memory:" }, live ? fetch : (async url => {
   if (String(url).includes("photon")) return new Response(JSON.stringify({ features: [
     { properties: { osm_type: "R", osm_id: 1, name: "San Francisco", city: "San Francisco", country: "United States", type: "city" }, geometry: { coordinates: [-122.4075, 37.7879] } },
     { properties: { osm_type: "N", osm_id: 2, name: "Museum of Modern Art", city: "San Francisco", type: "other" }, geometry: { coordinates: [-122.4007, 37.7859] } },
   ] }));
   return new Response(fixture.toBuffer("image/png"));
 }) as typeof fetch);
-const service = hyrule ? new MapService({ ...defaultConfig, cache: ":memory:", atlas: ".local/hyrule", kind: "hyrule" }, async () => new Response(fixture.toBuffer("image/png"))) : undefined;
+const service = hyrule ? new MapService({ ...defaultConfig, format: "raster", tileURL:"https://tile.openstreetmap.de/{z}/{x}/{y}.png", cache: ":memory:", atlas: ".local/hyrule", kind: "hyrule" }, async () => new Response(fixture.toBuffer("image/png"))) : undefined;
 const wasm = await createWasmUi(await Bun.file("runtime/hosts/web/pocketjs.wasm").arrayBuffer(), { width: 400, height: 480 });
 const ops = wasm.ops;
 ops.hitTestBoundsAuxiliary = (x, y) => ops.hitTestBounds!(x + 40, y + 240);

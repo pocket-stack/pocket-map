@@ -1,6 +1,6 @@
 import { createSignal, createMemo } from "solid-js";
 import { createResourceRuntime, createResourceView } from "@pocketjs/framework/resource-view";
-import { createOffloadImageCollection, offloadResource } from "@pocketjs/framework/resource-offload";
+import { createOffloadImageCollection, createOffloadMeshCollection, offloadResource } from "@pocketjs/framework/resource-offload";
 import { createTileCamera } from "@pocketjs/framework/tile-viewport";
 import { offload } from "@pocketjs/framework/offload";
 import { analogX, analogY, onFrame, onButtonPress } from "@pocketjs/framework/lifecycle";
@@ -35,14 +35,24 @@ export function createMap(io = offload()) {
   const planar = () => info()?.space === "planar";
   const p = project(HOME.lat, HOME.lon);
   const camera = createTileCamera({ width: 400, height: 240, x: p.x, y: p.y, zoom: HOME.zoom, minZoom: 1, maxZoom: 18, bounds: { width: 256, height: 256, wrapX: true } });
-  const runtime = createResourceRuntime({ maxConcurrent: 3, startsPerFrame: 1, completionsPerFrame: 1, maxCollections: 5, available: () => !switching() && io.connected() && !!info() && io.pending() < 3 });
-  const tiles = createOffloadImageCollection(runtime, io, { key: (i: TileInput) => `${i.source}/${i.z}/${i.x}/${i.y}`, method: "map.tile", payload: JSON.stringify,
+  const runtime = createResourceRuntime({ maxConcurrent: 3, startsPerFrame: 1, completionsPerFrame: 1, maxCollections: 6, available: () => !switching() && io.connected() && !!info() && io.pending() < 3 });
+  const rasterTiles = createOffloadImageCollection(runtime, io, { key: (i: TileInput) => `${i.source}/${i.z}/${i.x}/${i.y}`, method: "map.tile", payload: JSON.stringify,
     width: 256, height: 256, maxEntries: 40, maxViews: 2, maxDemandsPerView: 24, retry: { attempts: 3, delayFrames: 90, maxDelayFrames: 360 } });
+  const vector = () => info()?.render === "mesh";
+  const meshTiles = createOffloadMeshCollection(runtime, io, {key:(i:TileInput)=>`${i.source}/${i.z}/${i.x}/${i.y}`,method:"map.mesh",payload:JSON.stringify,
+    maxEntries:40,maxViews:2,maxDemandsPerView:24,retry:{attempts:3,delayFrames:90,maxDelayFrames:360}});
+  const tiles = { invalidate(){rasterTiles.invalidate();meshTiles.invalidate();},clear(){rasterTiles.clear();meshTiles.clear();},stats:()=>vector()?meshTiles.stats():rasterTiles.stats() };
   const labels = createOffloadImageCollection(runtime, io, { key: (i: Place) => `${i.name}/${i.detail}`, method: "map.label", payload: i => JSON.stringify({ name: i.name, detail: i.detail }),
-    width: 256, height: 32, maxEntries: 5, maxViews: 5, maxDemandsPerView: 1 });
+    width: 256, height: 32, maxEntries: 24, maxViews: 29, maxDemandsPerView: 1 });
   const [lookAhead, setLookAhead] = createSignal<DrawTile[]>([]);
-  const frontView = createResourceView(tiles, { demand: () => [...(front()?.tiles.map(t => ({ input: t.input, priority: t.priority, pin: true })) ?? []), ...lookAhead().map(t => ({ input: t.input, priority: t.priority, pin: false }))] });
-  const backView = createResourceView(tiles, { demand: () => back()?.tiles.map(t => ({ input: t.input, priority: 100, pin: true })) ?? [] });
+  const frontDemand=()=>[...(front()?.tiles.map(t=>({input:t.input,priority:t.priority,pin:true}))??[]),...lookAhead().map(t=>({input:t.input,priority:t.priority,pin:false}))];
+  const backDemand=()=>back()?.tiles.map(t=>({input:t.input,priority:100,pin:true}))??[];
+  const rasterFront=createResourceView(rasterTiles,{demand:()=>vector()?[]:frontDemand()});
+  const meshFront=createResourceView(meshTiles,{demand:()=>vector()?frontDemand():[]});
+  const rasterBack=createResourceView(rasterTiles,{demand:()=>vector()?[]:backDemand()});
+  const meshBack=createResourceView(meshTiles,{demand:()=>vector()?backDemand():[]});
+  const frontView={state:(i:TileInput)=>vector()?meshFront.state(i):rasterFront.state(i)};
+  const backView={state:(i:TileInput)=>vector()?meshBack.state(i):rasterBack.state(i)};
   const searches = runtime.createCollection({ key: (i: SearchInput) => JSON.stringify(i), maxEntries: 4, maxViews: 1, maxDemandsPerView: 1,
     maxCost: 4 * 8192, cost: () => 8192, maxResponseBytes: 5000, retry: { attempts: 1, delayFrames: 60, maxDelayFrames: 60 },
     load: offloadResource<SearchInput>(io, "map.search", JSON.stringify), materialize(raw: string): Place[] {
@@ -62,12 +72,13 @@ export function createMap(io = offload()) {
   function select(index: number) { const n = Math.max(0, Math.min(rows().length - 1, index)); if (mode() === "saved") saved.setSelection(n); else setSelection(n); }
   prediction.reset(camera.view());
   const maps = () => info()?.maps ?? [];
-  const choices = () => mode() === "sources" ? maps().map(m => m.name) : LAYERS.map(l => l.name);
+  const labelLayers = () => vector() ? [LAYERS[0],LAYERS[4]] : LAYERS;
+  const choices = () => mode() === "sources" ? maps().map(m => m.name) : labelLayers().map(l => l.name);
   const choosing = () => mode() === "sources" || mode() === "layers";
   function openSources() { if (saved.busy() || saved.modal() || typing() || switching()) return; camera.stop(); setSourceError(""); setMode("sources"); setSelection(Math.max(0, maps().findIndex(m => m.kind === info()?.kind))); setMenu(undefined); }
   function choose(index = selection()) {
     if (mode() === "sources") { const kind = maps()[index]?.kind; if (kind) switchMap(kind); }
-    else if (mode() === "layers") { annotations.setLayer(LAYERS[index].id); dismiss(); }
+    else if (mode() === "layers") { annotations.setLayer(labelLayers()[index].id); dismiss(); }
   }
   function switchMap(kind: MapKind) {
     if (saved.busy() || saved.modal() || typing() || switching()) return;
@@ -125,7 +136,7 @@ export function createMap(io = offload()) {
     if (bank === "places") {
       if (i === 0) openSearch(); else if (i === 1) saved.open(); else if (i === 2) saveCurrent(); else if (i === 3) go(pin()); else if (info()?.home) go(info()!.home); else home("San Francisco", HOME.lat, HOME.lon);
     } else if (bank === "map") {
-      if (i < 2) zoom(i === 0 ? 1 : -1); else if (i === 2) { setMode("layers"); setSelection(LAYERS.findIndex(l => l.id === annotations.layer())); } else if (i === 3) openSources(); else if (i === 4) setPin(undefined); else if (i === 5) tiles.invalidate(); else setMode("about");
+      if (i < 2) zoom(i === 0 ? 1 : -1); else if (i === 2) { setMode("layers"); setSelection(labelLayers().findIndex(l => l.id === annotations.layer())); } else if (i === 3) openSources(); else if (i === 4) setPin(undefined); else if (i === 5) tiles.invalidate(); else setMode("about");
     }
   }
   onButtonPress(BTN.CIRCLE, (_pressed, buttons) => { if (buttons & BTN.ZL || saved.modal() || saved.busy() || switching() || zoomHeld()) return; if (choosing()) choose(); else if (menu()) runMenu(); else if (typing()) key("GO"); else if (listing()) go(); });
@@ -158,6 +169,8 @@ export function createMap(io = offload()) {
           const value: MapInfo = JSON.parse(result.value);
           if (typeof value.source !== "string" || !/^[a-f0-9]{16}$/.test(value.source) || typeof value.name !== "string" || typeof value.attribution !== "string" || !Number.isInteger(value.maxZoom) || value.maxZoom < 1 || value.maxZoom > 18
             || !Number.isInteger(value.minZoom ?? 1) || (value.minZoom ?? 1) < 0 || (value.minZoom ?? 1) > value.maxZoom
+            || value.render !== undefined && value.render !== "mesh"
+            || value.render === "mesh" && (!Number.isInteger(value.dataZoom) || value.dataZoom! < 0 || value.dataZoom! > value.maxZoom)
             || value.space !== undefined && value.space !== "mercator" && value.space !== "planar"
             || value.home !== undefined && (!validPlaces([value.home]) || (value.home.space === "planar") !== (value.space === "planar"))) throw new Error("Invalid map provider");
           if (value.maps !== undefined && (!Array.isArray(value.maps) || value.maps.length > 2 || !value.maps.every(m => (m.kind === "hyrule" || m.kind === "osm") && typeof m.name === "string" && m.name.length <= 40))) throw new Error("Invalid map catalog");
@@ -194,7 +207,7 @@ export function createMap(io = offload()) {
     previousButtons = buttons;
     if (!info()) return;
     const view = camera.view(); prediction.sample(view, 1 / simulationHz(), !planar());
-    const next = Math.min(info()!.maxZoom, Math.max(info()!.minZoom ?? 1, Math.round(view.zoom)));
+    const next = Math.min(info()!.dataZoom ?? info()!.maxZoom, Math.max(info()!.minZoom ?? 1, Math.round(view.zoom)));
     levelAge = next === candidateLevel ? levelAge + 1 : 0; candidateLevel = next;
     let level = front()?.level ?? next;
     if (next !== level && (levelAge >= 8 || Math.abs(next - level) > 1)) {
@@ -218,7 +231,7 @@ export function createMap(io = offload()) {
     }
     if (back() && front()?.tiles.every(t => frontView.state(t.input).status === "ready")) setBack(undefined);
   });
-  return { io, runtime, tiles, labels, frontView, backView, info, planar, online, zoomHeld, switching, sourceError, maps, choices, choosing, choose, openSources, switchMap, annotations, status, mode, setMode, query, setQuery, submitted, results, places, selection, setSelection, pin, menu, menuIndex,
+  return { io, runtime, tiles, vector, labels, frontView, backView, info, planar, online, zoomHeld, switching, sourceError, maps, choices, choosing, choose, openSources, switchMap, annotations, status, mode, setMode, query, setQuery, submitted, results, places, selection, setSelection, pin, menu, menuIndex,
     shift, symbols, front, back, camera, saved, typing, listing, rows, selectedIndex, select, saveCurrent, lookAhead, search, openSearch, go, zoom, key, dismiss, runMenu,
     clearBack: () => setBack(undefined),
     diagnostics: () => ({ frame, pending: io.pending(), resources: runtime.stats(), tiles: tiles.stats(), camera: camera.view() }),

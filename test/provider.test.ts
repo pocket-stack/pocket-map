@@ -5,7 +5,7 @@ import { MapProvider, defaultConfig, packRGB } from "../host/provider.ts";
 const png = () => { const c = createCanvas(256, 256), ctx = c.getContext("2d"); ctx.fillStyle = "red"; ctx.fillRect(0, 0, 128, 256); ctx.fillStyle = "blue"; ctx.fillRect(128, 0, 128, 256); return c.toBuffer("image/png"); };
 test("host decodes PNGs, keeps exact PSM color order, deduplicates and rejects arbitrary URLs", async () => {
   let calls = 0;
-  const provider = new MapProvider({ ...defaultConfig, cache: ":memory:" }, (async () => { calls++; return new Response(png()); }) as NetworkFetch);
+  const provider = new MapProvider({ ...defaultConfig, format: "raster", tileURL:"https://tile.openstreetmap.de/{z}/{x}/{y}.png", cache: ":memory:" }, (async () => { calls++; return new Response(png()); }) as NetworkFetch);
   try {
     const input = { source: provider.info.source, z: 1, x: 0, y: 0 };
     const [a, b] = await Promise.all([provider.tile(input), provider.tile(input)]);
@@ -38,7 +38,7 @@ test("host cache persists reuse and conditional expiry, bounds bodies and honors
 });
 test("malformed dimensions cannot trigger an unbounded host image decode", async () => {
   const bytes = png(); bytes.writeUInt32BE(100000, 16);
-  const provider = new MapProvider({ ...defaultConfig, cache: ":memory:" }, (async () => new Response(bytes)) as NetworkFetch);
+  const provider = new MapProvider({ ...defaultConfig, format: "raster", tileURL:"https://tile.openstreetmap.de/{z}/{x}/{y}.png", cache: ":memory:" }, (async () => new Response(bytes)) as NetworkFetch);
   await expect(provider.tile({ source: provider.info.source, z: 1, x: 0, y: 0 })).rejects.toThrow("256px"); provider.close();
 });
 test("real Bun fetch accepts conditional 304 without following redirects", async () => {
@@ -58,7 +58,7 @@ test("real Bun fetch accepts conditional 304 without following redirects", async
 });
 test("search handles empty, malformed and duplicate results with a bounded response", async () => {
   const feature = { properties: { name: "Tokyo", osm_type: "N", osm_id: 1, country: "Japan", type: "city" }, geometry: { coordinates: [139.76, 35.68] } };
-  const provider = new MapProvider({ ...defaultConfig, cache: ":memory:" }, (async url => {
+  const provider = new MapProvider({ ...defaultConfig, format: "raster", tileURL:"https://tile.openstreetmap.de/{z}/{x}/{y}.png", cache: ":memory:" }, (async url => {
     expect(new URL(String(url)).searchParams.get("limit")).toBe("5");
     return new Response(JSON.stringify({ features: [feature, feature, { ...feature, geometry: { coordinates: [500, 1000] } }] }));
   }) as NetworkFetch);

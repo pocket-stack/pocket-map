@@ -28,10 +28,11 @@ export class MapService {
       if (!p) throw new Error("Map is not installed on your Mac");
       return JSON.stringify({ ...p.info, kind, maps: [...this.providers].map(([kind, p]) => ({ kind, name: p.info.name })) });
     },
+    "map.mesh": (raw:string) => {const v=JSON.parse(raw),p=this.resolve(v.source);if(!(p instanceof MapProvider))throw new Error("This source uses raster tiles");return p.mesh(v);},
     "map.tile": (raw: string) => { const v = JSON.parse(raw); return this.resolve(v.source).tile(v); },
     "map.search": async (raw: string) => { const v = JSON.parse(raw); return JSON.stringify(await this.resolve(v.source).search(v)); },
     "map.label": (raw: string) => this.resolve().methods()["map.label"](raw),
-    "map.markers": (raw: string) => { const v = JSON.parse(raw), p = this.resolve(v.source); return JSON.stringify(p instanceof AtlasProvider ? p.markerRows(v) : []); },
+    "map.markers": async (raw: string) => { const v = JSON.parse(raw), p = this.resolve(v.source); return JSON.stringify(await p.markerRows(v)); },
     "bookmarks.list": (raw: string) => { const v = JSON.parse(raw); return JSON.stringify(this.resolve(v.source).bookmarks.list(v.offset)); },
     "bookmarks.command": (raw: string) => { const v = JSON.parse(raw); return this.resolve(v.source).bookmarks.command(v); },
   }; }

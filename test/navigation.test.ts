@@ -83,7 +83,7 @@ test("marker index filters zoom/category and bounds replies; delayed bookmarks r
     expect(() => index.query({ source: atlas.source, z: 6, x: 32, y: 0, layer: "all" })).toThrow(); index.close();
     const db = new Database(join(dir, "atlas.sqlite")); db.exec("CREATE TABLE metadata(key TEXT PRIMARY KEY,value TEXT)");
     db.query("INSERT INTO metadata VALUES ('manifest',?)").run(JSON.stringify({ format: ATLAS_FORMAT, tiles: 21845, info: atlas })); db.close();
-    const service = new MapService({ ...defaultConfig, cache: ":memory:", atlas: dir, kind: "hyrule" }, () => { throw new Error("Network must not run"); });
+    const service = new MapService({ ...defaultConfig, format: "raster", tileURL:"https://tile.openstreetmap.de/{z}/{x}/{y}.png", cache: ":memory:", atlas: dir, kind: "hyrule" }, () => { throw new Error("Network must not run"); });
     try {
       const methods = service.methods(), before = JSON.parse(methods["map.info"]('{}'));
       const command = JSON.stringify({ source: before.source, op: "source_saved_1", kind: "save", place: atlas.home });

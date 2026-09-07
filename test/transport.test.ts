@@ -35,7 +35,7 @@ test("actual map provider reconnects during PNG fetch and returns intact image p
   await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
   const provider = connectOffloadProvider({ address: "127.0.0.1", port: (server.address() as { port: number }).port,
     key: "ab".repeat(32), isolation: "process", worker: new URL("../host/worker.ts", import.meta.url),
-    data: { ...defaultConfig, tileURL: `${http.url}{z}/{x}/{y}.png`, searchURL: String(http.url), cache: ":memory:" } });
+    data: { ...defaultConfig, format: "raster", tileURL: `${http.url}{z}/{x}/{y}.png`, searchURL: String(http.url), cache: ":memory:" } });
   try {
     for (let n = 0; n < 3; n++) {
       const peer = await peers.take(); peer.send("map.info", 1); const info = JSON.parse(JSON.parse((await peer.read()).toString()).payload);
