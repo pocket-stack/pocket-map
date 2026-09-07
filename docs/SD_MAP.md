@@ -26,6 +26,11 @@ it. A small bootstrap pack is activated after the terrain file. Keep ftpd
 running during both upload and verification; rerun the same command after an
 interruption. The default location is
 `/pocketjs/assets/c7771f0167312c63/`. Changed atlas revisions get distinct names.
+If verification reports a mismatch, the installer does not activate a replacement.
+`dist/qa/sd-verify.json` records the received size, hash and first differing byte.
+Use `bun run deploy:sd <3ds-ip> --restart` to replace the temporary copy from
+byte zero and repeat verification; an existing active pack stays in place until
+the replacement passes.
 
 ## What changes
 

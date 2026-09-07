@@ -1,5 +1,11 @@
 """Install an immutable, resumable atlas; activate only after full readback."""
-import ftplib, hashlib, json, pathlib, re, sys, time
+import argparse, ftplib, hashlib, json, pathlib, re, time
+
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('host', nargs='?', default='192.168.8.102')
+parser.add_argument('--restart', action='store_true',
+                    help='Upload a new temporary copy from byte zero after a readback mismatch')
+args = parser.parse_args()
 
 root = pathlib.Path(__file__).resolve().parent.parent
 meta = json.loads((root / '.local/3ds/manifest.json').read_text())
@@ -10,7 +16,7 @@ slot = hashlib.sha256(json.loads((root / 'pocket.json').read_text())['id'].encod
 base = '/pocketjs/assets/' + slot
 remote = base + '/' + local.name
 partial = remote + '.partial'
-host = sys.argv[1] if len(sys.argv) > 1 else '192.168.8.102'
+host = args.host
 with local.open('rb') as source:
     expected = hashlib.file_digest(source, 'sha256').hexdigest()
 started = time.monotonic()
@@ -27,13 +33,13 @@ for path in ['/pocketjs', '/pocketjs/assets', base]:
     try: ftp.mkd(path)
     except ftplib.error_perm as e:
         if not str(e).startswith('550'): raise
-try: installed = ftp.size(remote) == local.stat().st_size
+try: installed = not args.restart and ftp.size(remote) == local.stat().st_size
 except ftplib.error_perm: installed = False
 if not installed:
     for attempt in range(5):
         try:
             if ftp is None: ftp = connect()
-            try: offset = ftp.size(partial) or 0
+            try: offset = 0 if args.restart and attempt == 0 else ftp.size(partial) or 0
             except ftplib.error_perm: offset = 0
             if offset > local.stat().st_size: raise RuntimeError('Oversized partial atlas')
             if offset == local.stat().st_size: break
@@ -80,7 +86,7 @@ verification = dict(path=target, bytes=progress[0], expectedBytes=local.stat().s
 (root / 'dist/qa/sd-verify.json').write_text(json.dumps(verification, indent=2))
 if progress[0] != local.stat().st_size or digest.hexdigest() != expected:
     ftp.close()
-    raise RuntimeError('Atlas readback differs: ' + json.dumps(verification))
+    raise RuntimeError('Atlas readback differs; rerun with --restart: ' + json.dumps(verification))
 if not installed:
     ftp.rename(partial, remote)
 # The small bootstrap pointer becomes visible only after its complete atlas.
