@@ -116,7 +116,7 @@ function check(ok: unknown, name: string) {
   if (!ok) throw new Error(name);
   checks.push(name);
 }
-async function frames(n: number, buttons = 0, touch?: [number, number], analog = 0x8080) {
+async function frames(n: number, buttons = 0, touch?: [number, number], analog = 0x8080, inputElapsedUs?: number) {
   let hit: number | undefined;
   if (touch) {
     wasm.render();
@@ -132,6 +132,7 @@ async function frames(n: number, buttons = 0, touch?: [number, number], analog =
       touch ? [hit] : [],
       touch ? [1] : [],
       0x8080,
+      inputElapsedUs,
     );
     wasm.tick();
     const start = performance.now();
@@ -192,6 +193,7 @@ try {
   );
   await shot("map");
   check(s.annotations.rows().length > 0, "Independent label demand reveals atlas text");
+  check(s.annotations.renderRows().length <= 12, "Only the bounded visible vector labels mount UI");
   const before = { meshReplies, meshBytes, jsonBytes },
     center = s.camera.view();
   for (let z = 15; z <= 18; z++) {
@@ -247,6 +249,18 @@ try {
       await frames(160);
       check(s.vector() && !s.planar(), "Hot switch returns to OSM geometry");
     }
+  }
+  if (!live) {
+    const center = s.camera.view();
+    for (const cadence of [Array(60).fill(16667), Array(30).fill(33333), Array.from({ length: 30 }, (_, i) => [16667, 33333, 50000][i % 3])]) {
+      s.camera.jump(center.x, center.y, 14);
+      await frames(60, 0, undefined, 0xff80, 16667);
+      const start = s.camera.view();
+      for (const us of cadence) await frames(1, 0, undefined, 0xff80, us);
+      const pixels = (s.camera.view().x - start.x) * start.scale;
+      check(Math.abs(pixels - 320) < .02, `Compiled guest holds 320 px/s over ${cadence.length} sampled frames`);
+    }
+    await frames(200);
   }
   check(
     maxPending <= 3 && maxStaging <= 3 && maxEntries <= 40,

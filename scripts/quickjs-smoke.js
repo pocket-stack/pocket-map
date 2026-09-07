@@ -34,12 +34,22 @@ globalThis.offload = {
   },
 };
 globalThis.__simHz = 60;
-function frames(n, buttons = 0, analog = 0x8080) { for (let i = 0; i < n; i++) { frame(buttons, analog, [], [], [], 0x8080); ticks++; } }
+function frames(n, buttons = 0, analog = 0x8080, elapsedUs) { for (let i = 0; i < n; i++) { frame(buttons, analog, [], [], [], 0x8080, elapsedUs); ticks++; } }
 function check(value, message) { if (!value) throw new Error(message); }
 try {
   std.loadScript(scriptArgs[1] || "runtime/dist/3ds/guest/pocketmap-main.js");
   const s = globalThis.__map; frames(30); check(s.mode() === "map", "offline mount");
   session = 1; frames(90); check(s.front().tiles.every(t => s.frontView.state(t.input).status === "ready"), "tile reveal");
+  const center = s.camera.view(), motion = [];
+  for (const cadence of [Array(60).fill(16667), Array(30).fill(33333), Array.from({ length: 30 }, (_, i) => [16667, 33333, 50000][i % 3])]) {
+    s.camera.jump(center.x, center.y, center.zoom);
+    frames(60, 0, 0xff80, 16667); const start = s.camera.view();
+    for (const us of cadence) frames(1, 0, 0xff80, us);
+    motion.push((s.camera.view().x - start.x) * start.scale);
+  }
+  std.puts(JSON.stringify({ motionPixelsPerSecond: motion }) + "\n");
+  check(motion.every(px => Math.abs(px - 320) < .02), "held stick speed depends on presentation cadence");
+  s.camera.jump(center.x, center.y, center.zoom);
   frames(300, 0, 0x80ff); s.zoom(1); frames(90); s.zoom(-1); frames(90);
   s.openSearch(); s.key("t"); check(s.query() === "t", "local typing"); s.search(); frames(60); check(s.places().length === 1, "search");
   s.go(); frames(90); check(s.pin().name === (hyrule ? "Kakariko" : "Tokyo"), "place navigation");

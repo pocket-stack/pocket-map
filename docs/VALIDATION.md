@@ -247,3 +247,45 @@ with zero downloads or provider errors. Subsequent settled samples reported
 1 ms and submission below 0.6 ms. The recovery upload interval also recorded
 seven additional CPU frames above 16.67 ms, with a window UI maximum of 27.6 ms;
 settled timing must not be presented as uninterrupted 60 fps during loading.
+
+## Sustained controller motion
+
+The earlier guest advanced the camera by `1 / simulationHz()` per presented
+frame. Holding full Circle Pad input therefore moved 320 pixels in a second
+at 60 presented frames, but 160 pixels at 30 frames. The same failure reproduces
+with the actual previous compiled guest in QuickJS; the camera's exponential
+integrator was correct when supplied with the elapsed interval.
+
+The 3DS host now supplies input-sampling microseconds as recorded frame data.
+Pocket Map passes `inputDeltaSeconds()` to camera integration, drag filtering
+and directional intent. Virtual timers, core ticks and resource work budgets
+remain unchanged. The elapsed step is bounded to 66.666 ms: a long pause cannot
+cause a large catch-up jump, but rates below 15 fps cannot retain real-time
+travel under that bound.
+
+Vector labels mount at most 12 visible components and admit at most one new
+identity per frame. Hidden candidates no longer create UI nodes or frame hooks.
+Unchanged placements reuse their previous result. Predictive tile sorting runs
+at 12 Hz while a viewport's tile set and zoom remain unchanged; crossing a tile
+boundary or changing source/zoom recomputes demand in that frame.
+
+- 25 application tests / 981 assertions and TypeScript pass. Four directions
+  retain 320 pixels/second under 60/45/30 Hz and alternating 16.667/33.333/50 ms
+  samples. Tests also cover the resume bound, visible-tile admission and label
+  mount limits.
+- The actual new compiled guest in QuickJS reports 320.006, 319.997 and 320.000
+  pixels per second under 60-frame, 30-frame and mixed-cadence input; the previous
+  guest reports 320, 160 and 160. Both OSM and Hyrule pass 1,572 frames with a
+  128 KiB stack and no outstanding staging tickets.
+- Compiled guest + Wasm replay passes 17 checks across 1,903 frames, including
+  varying input intervals with real resource loading. Complete-Hyrule replay
+  remains 1,713 frames / 20 checks with zero Hyrule HTTP downloads.
+- PocketJS passes 80 clock, tape, tile and 3DS transport/profile tests, and
+  TypeScript. Tape v4 reproduces input intervals; legacy tapes ignore live
+  timing and keep their nominal step.
+- The production binary builds: 1,745,104 bytes, SHA-256
+  `f452efd99ee29491279780c621f59961466444d6fc59ab5948cd9b1568644330`.
+  Deployment and physical held-stick acceptance of this revision are pending.
+
+These replays establish distance per input time and bound label work. They do
+not establish uninterrupted 60 fps on hardware during resource materialization.

@@ -4,7 +4,7 @@ import { ClassicButton, ClassicFace, ClassicPanel, ClassicSheet } from "@pocketj
 import { ResourceImage, ResourceMesh } from "@pocketjs/framework/resource";
 import { createResourceView } from "@pocketjs/framework/resource-view";
 import { createGesture, createDragFilter } from "@pocketjs/framework/gesture";
-import { simulationHz } from "@pocketjs/framework/clock";
+import { inputDeltaSeconds } from "@pocketjs/framework/clock";
 import { onFrame } from "@pocketjs/framework/lifecycle";
 import * as hot from "@pocketjs/framework/hot";
 import {labelWidth,labelMetrics} from "./annotations.ts";
@@ -155,7 +155,7 @@ function Deck(p: { s: MapModel }) {
     onPanMove(c) {
       if (blocked() || naming() || p.s.choosing()) return;
       if (results()) { dy += c.fdy; const step = Math.trunc(dy / 20); if (step) { p.s.select(p.s.selectedIndex() + step); dy -= step * 20; } }
-      else { const delta = filter.update(c.dx, c.dy, 1 / simulationHz()); p.s.camera.drag(delta.dx * 1.45, delta.dy * 1.45); }
+      else { const delta = filter.update(c.dx, c.dy, inputDeltaSeconds()); p.s.camera.drag(delta.dx * 1.45, delta.dy * 1.45); }
     },
     onPanEnd() { setTouching(false); if (blocked() || naming() || p.s.choosing()) return; const v = filter.velocity(); p.s.camera.endDrag(results() ? 0 : v.x * 1.45, results() ? 0 : v.y * 1.45); },
     onTap() { setTouching(false); if (blocked() || naming() || p.s.choosing()) return; p.s.camera.endDrag(0, 0); if (results()) p.s.go(); },
@@ -209,7 +209,7 @@ export default function MapApp() {
   const deck = <Deck s={s} />;
   const map = <View debugName="MapViewport" class="absolute left-0 top-0 w-[400] h-[240] overflow-hidden bg-[#e6e7de]">
     <TileLayer s={s} back /><TileLayer s={s} />
-    <For each={s.annotations.rows()}>{marker => <Annotation s={s} marker={marker} />}</For>
+    <For each={s.annotations.renderRows()}>{marker => <Annotation s={s} marker={marker} />}</For>
     <Image ref={marker} src="map-pin.svg" style={{ ...box(0, 0, 16, 24), display: s.pin() ? 0 : 1 }} />
   </View>;
   return <><View class="relative w-[400] h-[240] bg-[#e6e7de]">

@@ -189,3 +189,18 @@ provider modes, maximum-size geometry, malformed/truncated data, stale handles,
 shared staging credit, cancellation, failed uploads, polygon clipping and
 resource cleanup. Pocket Map tests cover polygon holes, dense-tile detail
 reduction, source routing, label/geometry deduplication and source/display LOD.
+
+## Motion and label work per frame
+
+The host passes its elapsed input-sampling interval into the recorded frame.
+Pocket Map integrates controller velocity using `inputDeltaSeconds()` rather
+than counting presented frames; missing a vblank therefore does not halve
+travel speed. A 66.666 ms upper bound limits movement after a pause. Virtual
+animation ticks and resource admissions keep their fixed frame budgets.
+
+Only 12 collision-tested vector labels can own UI components. Candidate windows
+remain cached data; they do not each create a component or frame hook. Existing
+visible identities stay mounted and at most one new label mounts per frame.
+Predictive tile sorting is reused for up to 1/12 second while visible tile
+bounds and zoom stay fixed. A newly exposed tile invalidates that reuse in the
+same frame, preserving immediate visible demand.

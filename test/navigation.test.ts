@@ -1,6 +1,8 @@
 import { expect, test } from "bun:test";
 import { createRoot } from "solid-js";
 import { createTileCamera } from "@pocketjs/framework/tile-viewport";
+import { createAnnotations } from "../app/annotations.ts";
+import { createResourceRuntime } from "@pocketjs/framework/resource-view";
 import { createMapPrediction } from "../app/prediction.ts";
 import { createMap } from "../app/model.ts";
 import { createOffloadClient } from "@pocketjs/framework/offload";
@@ -95,4 +97,51 @@ test("marker index filters zoom/category and bounds replies; delayed bookmarks r
       expect(() => methods["bookmarks.command"](JSON.stringify({ ...JSON.parse(command), source: "wrong" }))).toThrow();
     } finally { service.close(); }
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("prediction reuse never delays a newly exposed tile and expires within a directional turn", () => {
+  const c = createTileCamera({ width: 400, height: 240, x: 128, y: 128, zoom: 4, minZoom: 0, maxZoom: 7 });
+  const p = createMapPrediction(); p.reset(c.view());
+  const first = p.plan(c.view(), 4, atlas);
+  c.drag(-5, 0); p.sample(c.view(), 1 / 60, false);
+  expect(p.plan(c.view(), 4, atlas)).toBe(first);
+  // The right viewport edge crosses a column before the 12 Hz refresh.
+  c.drag(-55, 0); p.sample(c.view(), 1 / 60, false);
+  const crossed = p.plan(c.view(), 4, atlas);
+  expect(crossed).not.toBe(first);
+  expect(crossed.visible.some(t => !first.visible.some(o => o.column === t.column && o.row === t.row))).toBe(true);
+  for (let i = 0; i < 5; i++) p.sample(c.view(), 1 / 60, false);
+  expect(p.plan(c.view(), 4, atlas)).not.toBe(crossed);
+});
+
+test("vector label candidates do not mount hidden UI and admit at most one new identity per frame", () => {
+  resetFrameHooks();
+  createRoot(dispose => {
+    const replies: string[] = [];
+    let requests = 0;
+    const io = createOffloadClient({ session: () => 1, submit(raw) {
+      const r = JSON.parse(raw), offset = requests++ * 12;
+      const rows = Array.from({ length: 12 }, (_, i) => [offset + i, `地点${offset + i}`, "landmark",
+        128 + ((i % 3) * 120 + 70 - 200) / 16384, 128 + (Math.floor(i / 3) * 40 + 45 - 120) / 16384]);
+      replies.push(JSON.stringify({ id: r.id, payload: JSON.stringify(rows) })); return true;
+    }, take: () => replies.shift(), uploadImage: () => 1, releaseImage() {} });
+    const runtime = createResourceRuntime({ maxConcurrent: 3, startsPerFrame: 1, completionsPerFrame: 1, maxCollections: 1 });
+    const labels = createAnnotations(io, runtime), view = { x: 128, y: 128, zoom: 14 }, info: MapInfo = { ...osm, render: "mesh", dataZoom: 14, markers: true };
+    let previous = new Set<number>();
+    for (let i = 0; i < 50; i++) {
+      labels.update(view, 14, info); runtime.step(); io.step();
+      const current = labels.renderRows();
+      expect(current.length).toBeLessThanOrEqual(12);
+      expect(current.filter(m => !previous.has(m[0])).length).toBeLessThanOrEqual(1);
+      previous = new Set(current.map(m => m[0]));
+    }
+    expect(labels.rows().length).toBeGreaterThan(12);
+    expect(labels.renderRows()).toHaveLength(12);
+    const settled = labels.renderRows(); labels.update(view, 14, info);
+    expect(labels.renderRows()).toBe(settled);
+    labels.setLayer("off"); labels.update(view, 14, info);
+    expect(labels.renderRows()).toHaveLength(0);
+    labels.reset(); expect(labels.placement(0)).toBeUndefined();
+    dispose(); io.dispose();
+  }); resetFrameHooks();
 });
