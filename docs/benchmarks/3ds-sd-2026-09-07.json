@@ -1,0 +1,424 @@
+{
+  "date": "2026-09-07",
+  "device": "Physical Nintendo 3DS; console variant and SD card model not recorded",
+  "applicationCommit": "73ed46079d58c8e92752f04543a15afa0617a6e6",
+  "runtimeCommit": "e2226e8f69990dd8361d79aabf47bcbedc44786d",
+  "benchmarkBinarySha256": "d8ef7e51bab6716c72c380b6cd95eec82e70920b9dde5eba75ae058cbf1d3c57",
+  "terrainPack": {
+    "bytes": 370952504,
+    "sha256": "d088a630e7d2a0f4c87d78e700f10c04f3cceefaab89d477c7f9549b10fe8ff6"
+  },
+  "method": {
+    "completeRuns": 1,
+    "guestTileCapacity": 40,
+    "prediction": "Same directional policy in both paths",
+    "annotations": "off",
+    "desktopCache": "enabled",
+    "coldView": "Guest tiles cleared; elapsed time until all visible target-level resources are ready; SD precedes Mac at each view",
+    "pan": "Initial view warmed; 320 px/s diagonal at z6 for eight seconds per path",
+    "notReadyFrame": "At least one visible target-level tile is not ready; does not measure blank pixel area or whether a coarser fallback covers it",
+    "framesPerSecond": "Benchmark frame callback count divided by native elapsed time; not GPU presentation timing",
+    "limits": [
+      "One fixed-route run; not repeated-trial percentiles",
+      "SD worker requests already in flight may finish after a switch to Mac; they do not upload in the Mac legs",
+      "Offline cold startup was not exercised in this connected comparison"
+    ]
+  },
+  "summary": {
+    "views": [
+      {
+        "point": [
+          107.733333,
+          168,
+          4
+        ],
+        "sdMs": 150,
+        "macMs": 895,
+        "speedup": 5.97
+      },
+      {
+        "point": [
+          145,
+          101,
+          6
+        ],
+        "sdMs": 346,
+        "macMs": 1651,
+        "speedup": 4.77
+      },
+      {
+        "point": [
+          128,
+          128,
+          7
+        ],
+        "sdMs": 435,
+        "macMs": 1174,
+        "speedup": 2.7
+      },
+      {
+        "point": [
+          64,
+          64,
+          5
+        ],
+        "sdMs": 240,
+        "macMs": 990,
+        "speedup": 4.12
+      }
+    ],
+    "meanSDMs": 292.75,
+    "meanMacMs": 1177.5,
+    "meanSpeedup": 4.02,
+    "pan": [
+      {
+        "storage": "local",
+        "milliseconds": 8004,
+        "frames": 435,
+        "framesPerSecond": 54.35,
+        "fallbackFrames": 57,
+        "fallbackPercent": 13.1,
+        "over20ms": 80,
+        "distance": 2560.320000000004,
+        "packDelta": {
+          "reads": 63,
+          "ioUs": 1410023,
+          "decodeUs": 640240,
+          "uploads": 61,
+          "uploadUs": 61532,
+          "failures": 0
+        }
+      },
+      {
+        "storage": "desktop",
+        "milliseconds": 8015,
+        "frames": 412,
+        "framesPerSecond": 51.4,
+        "fallbackFrames": 397,
+        "fallbackPercent": 96.36,
+        "over20ms": 114,
+        "distance": 2564.8000000000034,
+        "packDelta": {
+          "reads": 0,
+          "ioUs": 0,
+          "decodeUs": 0,
+          "uploads": 0,
+          "uploadUs": 0,
+          "failures": 0
+        }
+      }
+    ]
+  },
+  "legs": [
+    {
+      "received": "2026-09-07T15:29:25.082Z",
+      "stage": 0,
+      "local": true,
+      "mode": "cold-view",
+      "point": [
+        107.733333,
+        168,
+        4
+      ],
+      "milliseconds": 150,
+      "frames": 9,
+      "ready": 3,
+      "visible": 3,
+      "level": 4,
+      "storage": "local",
+      "complete": true,
+      "fallbackFrames": 0,
+      "over20ms": 0,
+      "distance": 0,
+      "packBefore": "reads=16 ioUs=349384 decodeUs=138216 maxIoUs=38140 maxDecodeUs=12241 failures=0 uploads=15 uploadUs=16274 maxUploadUs=1324",
+      "packAfter": "reads=19 ioUs=425620 decodeUs=162492 maxIoUs=38140 maxDecodeUs=12725 failures=0 uploads=18 uploadUs=19038 maxUploadUs=1324",
+      "packDelta": {
+        "reads": 3,
+        "ioUs": 76236,
+        "decodeUs": 24276,
+        "uploads": 3,
+        "uploadUs": 2764,
+        "failures": 0
+      }
+    },
+    {
+      "received": "2026-09-07T15:29:26.050Z",
+      "stage": 1,
+      "local": false,
+      "mode": "cold-view",
+      "point": [
+        107.733333,
+        168,
+        4
+      ],
+      "milliseconds": 895,
+      "frames": 54,
+      "ready": 3,
+      "visible": 3,
+      "level": 4,
+      "storage": "desktop",
+      "complete": true,
+      "fallbackFrames": 0,
+      "over20ms": 0,
+      "distance": 0,
+      "packBefore": "reads=21 ioUs=482888 decodeUs=173891 maxIoUs=38140 maxDecodeUs=12725 failures=0 uploads=19 uploadUs=19990 maxUploadUs=1324",
+      "packAfter": "reads=23 ioUs=546750 decodeUs=190827 maxIoUs=45611 maxDecodeUs=12725 failures=0 uploads=19 uploadUs=19990 maxUploadUs=1324",
+      "packDelta": {
+        "reads": 2,
+        "ioUs": 63862,
+        "decodeUs": 16936,
+        "uploads": 0,
+        "uploadUs": 0,
+        "failures": 0
+      }
+    },
+    {
+      "received": "2026-09-07T15:29:27.310Z",
+      "stage": 2,
+      "local": true,
+      "mode": "cold-view",
+      "point": [
+        145,
+        101,
+        6
+      ],
+      "milliseconds": 346,
+      "frames": 14,
+      "ready": 6,
+      "visible": 6,
+      "level": 6,
+      "storage": "local",
+      "complete": true,
+      "fallbackFrames": 0,
+      "over20ms": 0,
+      "distance": 0,
+      "packBefore": "reads=23 ioUs=546750 decodeUs=190827 maxIoUs=45611 maxDecodeUs=12725 failures=0 uploads=19 uploadUs=19990 maxUploadUs=1324",
+      "packAfter": "reads=31 ioUs=756181 decodeUs=251661 maxIoUs=45611 maxDecodeUs=14139 failures=0 uploads=25 uploadUs=28086 maxUploadUs=1801",
+      "packDelta": {
+        "reads": 8,
+        "ioUs": 209431,
+        "decodeUs": 60834,
+        "uploads": 6,
+        "uploadUs": 8096,
+        "failures": 0
+      }
+    },
+    {
+      "received": "2026-09-07T15:29:29.224Z",
+      "stage": 3,
+      "local": false,
+      "mode": "cold-view",
+      "point": [
+        145,
+        101,
+        6
+      ],
+      "milliseconds": 1651,
+      "frames": 98,
+      "ready": 6,
+      "visible": 6,
+      "level": 6,
+      "storage": "desktop",
+      "complete": true,
+      "fallbackFrames": 0,
+      "over20ms": 0,
+      "distance": 0,
+      "packBefore": "reads=38 ioUs=922956 decodeUs=336096 maxIoUs=45611 maxDecodeUs=14139 failures=0 uploads=33 uploadUs=36186 maxUploadUs=1801",
+      "packAfter": "reads=41 ioUs=961930 decodeUs=412264 maxIoUs=45611 maxDecodeUs=49973 failures=0 uploads=33 uploadUs=36186 maxUploadUs=1801",
+      "packDelta": {
+        "reads": 3,
+        "ioUs": 38974,
+        "decodeUs": 76168,
+        "uploads": 0,
+        "uploadUs": 0,
+        "failures": 0
+      }
+    },
+    {
+      "received": "2026-09-07T15:29:30.522Z",
+      "stage": 4,
+      "local": true,
+      "mode": "cold-view",
+      "point": [
+        128,
+        128,
+        7
+      ],
+      "milliseconds": 435,
+      "frames": 22,
+      "ready": 4,
+      "visible": 4,
+      "level": 7,
+      "storage": "local",
+      "complete": true,
+      "fallbackFrames": 0,
+      "over20ms": 0,
+      "distance": 0,
+      "packBefore": "reads=41 ioUs=961930 decodeUs=412264 maxIoUs=45611 maxDecodeUs=49973 failures=0 uploads=33 uploadUs=36186 maxUploadUs=1801",
+      "packAfter": "reads=50 ioUs=1240052 decodeUs=495505 maxIoUs=55492 maxDecodeUs=49973 failures=0 uploads=39 uploadUs=42509 maxUploadUs=1801",
+      "packDelta": {
+        "reads": 9,
+        "ioUs": 278122,
+        "decodeUs": 83241,
+        "uploads": 6,
+        "uploadUs": 6323,
+        "failures": 0
+      }
+    },
+    {
+      "received": "2026-09-07T15:29:31.929Z",
+      "stage": 5,
+      "local": false,
+      "mode": "cold-view",
+      "point": [
+        128,
+        128,
+        7
+      ],
+      "milliseconds": 1174,
+      "frames": 70,
+      "ready": 4,
+      "visible": 4,
+      "level": 7,
+      "storage": "desktop",
+      "complete": true,
+      "fallbackFrames": 0,
+      "over20ms": 0,
+      "distance": 0,
+      "packBefore": "reads=59 ioUs=1396321 decodeUs=572373 maxIoUs=55492 maxDecodeUs=49973 failures=0 uploads=47 uploadUs=50236 maxUploadUs=1801",
+      "packAfter": "reads=61 ioUs=1467608 decodeUs=580975 maxIoUs=55492 maxDecodeUs=49973 failures=0 uploads=47 uploadUs=50236 maxUploadUs=1801",
+      "packDelta": {
+        "reads": 2,
+        "ioUs": 71287,
+        "decodeUs": 8602,
+        "uploads": 0,
+        "uploadUs": 0,
+        "failures": 0
+      }
+    },
+    {
+      "received": "2026-09-07T15:29:33.068Z",
+      "stage": 6,
+      "local": true,
+      "mode": "cold-view",
+      "point": [
+        64,
+        64,
+        5
+      ],
+      "milliseconds": 240,
+      "frames": 11,
+      "ready": 4,
+      "visible": 4,
+      "level": 5,
+      "storage": "local",
+      "complete": true,
+      "fallbackFrames": 0,
+      "over20ms": 0,
+      "distance": 0,
+      "packBefore": "reads=61 ioUs=1467608 decodeUs=580975 maxIoUs=55492 maxDecodeUs=49973 failures=0 uploads=47 uploadUs=50236 maxUploadUs=1801",
+      "packAfter": "reads=66 ioUs=1590484 decodeUs=617771 maxIoUs=55492 maxDecodeUs=49973 failures=0 uploads=51 uploadUs=56332 maxUploadUs=1975",
+      "packDelta": {
+        "reads": 5,
+        "ioUs": 122876,
+        "decodeUs": 36796,
+        "uploads": 4,
+        "uploadUs": 6096,
+        "failures": 0
+      }
+    },
+    {
+      "received": "2026-09-07T15:29:34.371Z",
+      "stage": 7,
+      "local": false,
+      "mode": "cold-view",
+      "point": [
+        64,
+        64,
+        5
+      ],
+      "milliseconds": 990,
+      "frames": 59,
+      "ready": 4,
+      "visible": 4,
+      "level": 5,
+      "storage": "desktop",
+      "complete": true,
+      "fallbackFrames": 0,
+      "over20ms": 0,
+      "distance": 0,
+      "packBefore": "reads=78 ioUs=1854721 decodeUs=734985 maxIoUs=55492 maxDecodeUs=49973 failures=0 uploads=62 uploadUs=67126 maxUploadUs=1975",
+      "packAfter": "reads=78 ioUs=1854721 decodeUs=734985 maxIoUs=55492 maxDecodeUs=49973 failures=0 uploads=62 uploadUs=67126 maxUploadUs=1975",
+      "packDelta": {
+        "reads": 0,
+        "ioUs": 0,
+        "decodeUs": 0,
+        "uploads": 0,
+        "uploadUs": 0,
+        "failures": 0
+      }
+    },
+    {
+      "received": "2026-09-07T15:29:43.704Z",
+      "stage": 8,
+      "local": true,
+      "mode": "pan",
+      "point": [
+        72,
+        160,
+        6
+      ],
+      "milliseconds": 8004,
+      "frames": 435,
+      "ready": 4,
+      "visible": 4,
+      "level": 6,
+      "storage": "local",
+      "complete": true,
+      "fallbackFrames": 57,
+      "over20ms": 80,
+      "distance": 2560.320000000004,
+      "packBefore": "reads=88 ioUs=2128783 decodeUs=817536 maxIoUs=55492 maxDecodeUs=49973 failures=0 uploads=68 uploadUs=73767 maxUploadUs=1975",
+      "packAfter": "reads=151 ioUs=3538806 decodeUs=1457776 maxIoUs=55492 maxDecodeUs=49973 failures=0 uploads=129 uploadUs=135299 maxUploadUs=1975",
+      "packDelta": {
+        "reads": 63,
+        "ioUs": 1410023,
+        "decodeUs": 640240,
+        "uploads": 61,
+        "uploadUs": 61532,
+        "failures": 0
+      }
+    },
+    {
+      "received": "2026-09-07T15:29:53.289Z",
+      "stage": 9,
+      "local": false,
+      "mode": "pan",
+      "point": [
+        72,
+        160,
+        6
+      ],
+      "milliseconds": 8015,
+      "frames": 412,
+      "ready": 1,
+      "visible": 4,
+      "level": 6,
+      "storage": "desktop",
+      "complete": true,
+      "fallbackFrames": 397,
+      "over20ms": 114,
+      "distance": 2564.8000000000034,
+      "packBefore": "reads=151 ioUs=3538806 decodeUs=1457776 maxIoUs=55492 maxDecodeUs=49973 failures=0 uploads=129 uploadUs=135299 maxUploadUs=1975",
+      "packAfter": "reads=151 ioUs=3538806 decodeUs=1457776 maxIoUs=55492 maxDecodeUs=49973 failures=0 uploads=129 uploadUs=135299 maxUploadUs=1975",
+      "packDelta": {
+        "reads": 0,
+        "ioUs": 0,
+        "decodeUs": 0,
+        "uploads": 0,
+        "uploadUs": 0,
+        "failures": 0
+      }
+    }
+  ]
+}

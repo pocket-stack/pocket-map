@@ -52,12 +52,9 @@ decoded and CRC-checked locally. RGB565 channel order and tiling were also
 compared with devkitPro tex3ds 2.3.0 using a color-grid fixture and the renderer's
 vertical origin; all 512 texture bytes matched.
 
-These are artifact and storage measurements. **A hardware latency multiplier
-has not yet been established.** Removing a 128 KiB Wi-Fi transfer per miss is
-expected to help substantially, but SD latency, inflation, scheduling and frame
-presentation still contribute. A frame rate increase is not implied if the UI
-already presents at 60 Hz. The intended benefit is less time showing missing
-terrain while moving and less texture memory per resident tile.
+The device comparison below measures loading and frame callbacks separately.
+Removing the Wi-Fi transfer and render-path pixel conversion reduces loading
+time; it does not establish a 60 Hz presentation guarantee.
 
 The framework's optional `io.resource-pack` worker adds eight 128 KiB staging
 slots, one compressed scratch buffer and a 32 KiB stack. It caches four file
@@ -96,3 +93,49 @@ not a successful SD comparison. Keep the Mac connected throughout the run;
 the native host's usual `offload.metrics` log supplies separate frame CPU data.
 The test returns to Hyrule after saving its receipts. Its automatic navigation
 is absent from the production app.
+
+## Hardware result: 2026-09-07
+
+One run on the user's physical 3DS completed all ten legs. Both binaries passed
+byte-exact FTP readback. The installed terrain pack passed full SHA-256 readback;
+restarting ftpd allowed its final rename after an earlier rename error. The
+[measurement record](benchmarks/3ds-sd-2026-09-07.json) includes build identities,
+artifact hashes, route coordinates, all ten receipts and the metric definitions.
+The console variant and SD card model were not recorded.
+
+| Cold view | Visible target tiles | SD ready | Mac ready | Mac / SD |
+| --- | ---: | ---: | ---: | ---: |
+| z4 | 3 | 150 ms | 895 ms | 5.97× |
+| z6 | 6 | 346 ms | 1,651 ms | 4.77× |
+| z7 | 4 | 435 ms | 1,174 ms | 2.70× |
+| z5 | 4 | 240 ms | 990 ms | 4.12× |
+| Mean | — | 292.75 ms | 1,177.50 ms | 4.02× |
+
+**Mean time to ready terrain fell by 75.1%** with the same 40-entry guest cache
+and prediction policy. The Mac cache was enabled. This is a guest-cache cold
+comparison on four views, with SD preceding Mac at each view; it is not a
+repeated-trial latency distribution or a cold-disk benchmark.
+
+| Eight-second diagonal pan | SD | Mac |
+| --- | ---: | ---: |
+| Distance | 2,560.32 px | 2,564.80 px |
+| Frame callbacks | 435 | 412 |
+| Frame callbacks per second | 54.35 | 51.40 |
+| Callbacks with target terrain not ready | 57 / 435 (13.10%) | 397 / 412 (96.36%) |
+| Callback intervals over 20 ms | 80 | 114 |
+
+"Not ready" means at least one visible tile at the target zoom level is not
+ready. It does not mean the whole viewport is blank, and does not measure how
+much a coarser fallback covers. Callback frequency is not a GPU presentation
+measurement. **This run does not demonstrate sustained 60 FPS.**
+
+The SD pan completed 63 worker reads and 61 texture uploads, with zero pack
+failures. Worker IO totalled 1,410 ms and inflation 640 ms across those reads;
+native texture registration/staging totalled 61.5 ms across the uploads. These
+are accumulated operation times, not time spent blocking UI frames. Mac pan
+performed no SD reads or uploads. A few cancelled SD reads finished during the
+first three Mac cold-view legs, but produced no uploads there.
+
+All SD legs reported local storage and all Mac legs reported desktop storage;
+native pack failures remained zero throughout. The comparison kept the Mac
+connected to collect results, so it does not verify an offline cold launch.
