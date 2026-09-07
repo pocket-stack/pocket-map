@@ -285,7 +285,9 @@ boundary or changing source/zoom recomputes demand in that frame.
   timing and keep their nominal step.
 - The production binary builds: 1,745,104 bytes, SHA-256
   `f452efd99ee29491279780c621f59961466444d6fc59ab5948cd9b1568644330`.
-  Deployment and physical held-stick acceptance of this revision are pending.
+  Uploaded to `192.168.8.102:5000` at `/3DS/pocketmap-main.3dsx` and read back
+  byte-for-byte equal, together with the existing app pairing key. Physical
+  held-stick acceptance of this revision remains pending.
 
 These replays establish distance per input time and bound label work. They do
 not establish uninterrupted 60 fps on hardware during resource materialization.
