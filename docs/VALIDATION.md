@@ -209,5 +209,7 @@ revised 3DS backend materializes immutable GPU buffers once and emits bounded
 handle/transform/clip commands during navigation. Its telemetry splits UI/core,
 frame preparation and submission durations. Core tests cover backend opt-in,
 transform scaling, opacity fallback, off-screen culling and stale mesh handles.
-The native build and app checks pass; physical timing of this revision remains
-pending deployment and interaction.
+The native build and app checks pass. This revision was uploaded to
+`192.168.8.102:5000` and read back equal: 1,740,768 bytes, SHA-256
+`fd9f701d9159aedc8a2e45ffa0aa9e98f0e5fc4d888e6ccca816a2033dd8a135`.
+Physical timing remains pending interaction with this binary.
