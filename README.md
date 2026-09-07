@@ -50,7 +50,9 @@ queue; it is not a device-render receipt.
 | D-pad up/down + A | Choose and open a search result or menu item |
 | X / Back to pin | Return to the selected place |
 | Hold L | Search, saved places, save map center, return to pin, or map home |
-| Hold R | Zoom, clear pin, retry tiles, or show controls |
+| Hold R | Zoom, label categories, switch map, clear pin, retry, or controls |
+| Hold ZL + D-pad up/down | Open the vertical zoom rail; tap or hold to change levels |
+| Map name on the lower screen | Switch Hyrule / OSM without restarting |
 | Save view / Save place | Name and save the center or selected search result on the Mac |
 | Saved | Browse, rename, delete with confirmation, or return to a saved location |
 | Saved page: Prev / Next or D-pad left/right | Turn five-place pages |
@@ -79,9 +81,37 @@ It is reused on the next invocation; `--rebuild` explicitly replaces it.
 The Hyrule provider has no HTTP fallback or request throttle. It reads the
 prepared textures and keeps 128 decoded renditions on the Mac. The device
 retains 40 tiles and requests up to 12 neighboring tiles with a 256px margin
-and at most 384px of directional prediction. Visible tiles retain priority.
+and at most 512px of directional prediction. Repeated strokes accumulate camera
+travel: lifting the stylus retains the direction for three seconds, followed by
+expiry. Once direction is established, the extra tiles follow a forward corridor
+instead of filling a surrounding ring. A turn changes the prediction.
+
+After zooming in, a five-second prediction window prepares up to six tiles from
+the next level around the center. These share the 12-extra-tile budget with pan
+prediction and the same 40-entry cache. Visible tiles retain priority.
 The finite world clamps at its edges; Map home returns to the Great Plateau.
 Try searching `Kakariko`, `Hyrule Castle`, `Shrine` or `Great Plateau`.
+
+## Switching maps and game labels
+
+Tap the **Map** name on the lower screen, or use **R → Switch map**. Choose with
+touch or D-pad / A. Each map remembers its last camera position, zoom and pin
+for this guest session. The daemon keeps both providers available; all tile,
+search and bookmark requests carry the selected source identity. Switching
+clears old view demand and fences late responses. A pending bookmark mutation
+must finish or be resolved before switching databases.
+
+Hyrule's separate marker index contains 2,576 annotations. **R → Map labels**
+selects all labels, places/shrines/towers, collectibles, enemies, or hides labels.
+Regions appear at wide zooms; detailed items such as Koroks and treasures appear
+from level 6. The Mac performs spatial queries and density selection. The guest
+receives bounded point/name/category records and draws small baked icons plus
+text locally, so labels move with the map without another network round trip.
+OSM's place labels remain part of its base tile images.
+
+`prepare:hyrule` refreshes the separate marker index without rebaking existing
+terrain textures. Marker assets and SQLite stay outside Git; the small UI icons
+are drawn for this app.
 
 ## Saved places
 

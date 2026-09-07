@@ -1,13 +1,15 @@
 import { Database } from "bun:sqlite";
 import { inflateRawSync } from "node:zlib";
+import { existsSync } from "node:fs";
+import { MarkerIndex } from "./markers.ts";
 import { join } from "node:path";
 import type { OffloadImage } from "@pocketjs/framework/offload/provider";
 import { Bookmarks } from "./bookmarks.ts";
 import { renderLabel } from "./provider.ts";
-import { validPosition, type MapInfo, type Place, type SearchInput, type TileInput } from "../shared/types.ts";
+import { validPosition, type MapInfo, type Place, type SearchInput, type TileInput, type MarkerInput } from "../shared/types.ts";
 
-export const HYRULE_REVISION = "d32a85656031d861cef38e32eb927a7d08a983a9";
-export const ATLAS_FORMAT = "pocket-map-atlas-rgb565-v1";
+import { ATLAS_FORMAT } from "./atlas-format.ts";
+export { HYRULE_REVISION, ATLAS_FORMAT } from "./atlas-format.ts";
 export interface AtlasManifest { format: string; revision: string; tiles: number; places: number; info: MapInfo }
 
 /** The installed atlas is complete and immutable. Reads never fall through to
@@ -16,6 +18,7 @@ export class AtlasProvider {
   readonly info: MapInfo;
   readonly bookmarks: Bookmarks;
   private db: Database;
+  private markers?: MarkerIndex;
   private images = new Map<string, OffloadImage>();
   private reads = 0;
   private hits = 0;
@@ -26,11 +29,13 @@ export class AtlasProvider {
     if (!manifest || manifest.format !== ATLAS_FORMAT || manifest.tiles !== 21845 || manifest.info.space !== "planar") {
       this.db.close(); throw new Error("Incomplete Hyrule atlas; run bun run prepare:hyrule");
     }
-    this.info = manifest.info;
+    if (existsSync(join(directory, "markers.sqlite"))) this.markers = new MarkerIndex(join(directory, "markers.sqlite"));
+    this.info = { ...manifest.info, markers: !!this.markers };
     this.bookmarks = new Bookmarks(join(directory, "places.sqlite"));
   }
   methods() { return {
     "map.info": () => JSON.stringify(this.info),
+    "map.markers": (raw: string) => JSON.stringify(this.markerRows(JSON.parse(raw))),
     "map.tile": (raw: string) => this.tile(JSON.parse(raw)),
     "map.search": (raw: string) => JSON.stringify(this.search(JSON.parse(raw))),
     "map.label": (raw: string) => renderLabel(JSON.parse(raw)),
@@ -60,6 +65,7 @@ export class AtlasProvider {
       ORDER BY rank, ((x-?)*(x-?)+(y-?)*(y-?)) LIMIT 5`).all(match, input.x, input.x, input.y, input.y) as Omit<Extract<Place, { space: "planar" }>, "space">[];
     return rows.map(row => ({ ...row, space: "planar" }));
   }
+  markerRows(input: MarkerInput) { if (input.source !== this.info.source) throw new Error("Unknown marker source"); return this.markers?.query(input) ?? []; }
   diagnostics() { return { atlasReads: this.reads, memoryHits: this.hits, downloads: 0 }; }
-  close() { this.db.close(); this.bookmarks.close(); }
+  close() { this.markers?.close(); this.db.close(); this.bookmarks.close(); }
 }

@@ -1,12 +1,11 @@
 import { dispatchOffload } from "@pocketjs/framework/offload/provider";
-import { MapProvider } from "./provider.ts";
-import { AtlasProvider } from "./atlas.ts";
+import { MapService } from "./service.ts";
 declare const self: { onmessage: (event: MessageEvent) => void; postMessage(value: unknown): void };
-let provider: MapProvider | AtlasProvider;
+let provider: MapService;
 const trace = process.env.POCKET_MAP_TRACE === "1";
 self.onmessage = async event => {
   if (event.data.init) {
-    provider = event.data.init.kind === "hyrule" ? new AtlasProvider(event.data.init.atlas) : new MapProvider(event.data.init);
+    provider = new MapService(event.data.init);
     return;
   }
   const started = Date.now();

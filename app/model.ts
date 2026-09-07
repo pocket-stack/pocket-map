@@ -1,20 +1,23 @@
 import { createSignal, createMemo } from "solid-js";
 import { createResourceRuntime, createResourceView } from "@pocketjs/framework/resource-view";
 import { createOffloadImageCollection, offloadResource } from "@pocketjs/framework/resource-offload";
-import { createTileCamera, planTileWindow } from "@pocketjs/framework/tile-viewport";
+import { createTileCamera } from "@pocketjs/framework/tile-viewport";
 import { offload } from "@pocketjs/framework/offload";
 import { analogX, analogY, onFrame, onButtonPress } from "@pocketjs/framework/lifecycle";
 import { BTN } from "@pocketjs/framework/input";
 import { simulationHz, virtualNow } from "@pocketjs/framework/clock";
-import { project, worldPosition, positionAt, wrapTile } from "./geo.ts";
+import { project, worldPosition, positionAt } from "./geo.ts";
 import { createSavedPlaces, validPlaces, type MapMode } from "./saved.ts";
-import { HOME, type TileInput, type MapInfo, type SearchInput, type Place } from "../shared/types.ts";
+import { HOME, type TileInput, type MapInfo, type SearchInput, type Place, type MapKind } from "../shared/types.ts";
+
+import { createMapPrediction } from "./prediction.ts";
+import { createAnnotations, LAYERS } from "./annotations.ts";
 
 export interface DrawTile { input: TileInput; column: number; row: number; priority: number }
 export interface Layer { level: number; tiles: DrawTile[]; originX: number; originY: number }
 export const MENU = {
   places: ["Search places", "Saved places", "Save map center", "Back to pin", "Map home"],
-  map: ["Zoom in", "Zoom out", "Clear pin", "Retry tiles", "About & controls"],
+  map: ["Zoom in", "Zoom out", "Map labels", "Switch map", "Clear pin", "Retry tiles", "About & controls"],
 };
 export function createMap(io = offload()) {
   const [info, setInfo] = createSignal<MapInfo>();
@@ -25,16 +28,20 @@ export function createMap(io = offload()) {
   const [menu, setMenu] = createSignal<"places" | "map">(), [menuIndex, setMenuIndex] = createSignal(0);
   const [shift, setShift] = createSignal<"off" | "once" | "locked">("off"), [symbols, setSymbols] = createSignal(false);
   const [front, setFront] = createSignal<Layer>(), [back, setBack] = createSignal<Layer>();
+  const [zoomHeld, setZoomHeld] = createSignal(false), [switching, setSwitching] = createSignal(false);
+  const [sourceError, setSourceError] = createSignal("");
+  const [requestedKind, setRequestedKind] = createSignal<MapKind>();
+  const remembered = new Map<MapKind, { x: number; y: number; zoom: number; pin?: Place }>();
   const planar = () => info()?.space === "planar";
   const p = project(HOME.lat, HOME.lon);
   const camera = createTileCamera({ width: 400, height: 240, x: p.x, y: p.y, zoom: HOME.zoom, minZoom: 1, maxZoom: 18, bounds: { width: 256, height: 256, wrapX: true } });
-  const runtime = createResourceRuntime({ maxConcurrent: 3, startsPerFrame: 1, completionsPerFrame: 1, maxCollections: 4, available: () => io.connected() && !!info() && io.pending() < 3 });
+  const runtime = createResourceRuntime({ maxConcurrent: 3, startsPerFrame: 1, completionsPerFrame: 1, maxCollections: 5, available: () => !switching() && io.connected() && !!info() && io.pending() < 3 });
   const tiles = createOffloadImageCollection(runtime, io, { key: (i: TileInput) => `${i.source}/${i.z}/${i.x}/${i.y}`, method: "map.tile", payload: JSON.stringify,
     width: 256, height: 256, maxEntries: 40, maxViews: 2, maxDemandsPerView: 24, retry: { attempts: 3, delayFrames: 90, maxDelayFrames: 360 } });
   const labels = createOffloadImageCollection(runtime, io, { key: (i: Place) => `${i.name}/${i.detail}`, method: "map.label", payload: i => JSON.stringify({ name: i.name, detail: i.detail }),
     width: 256, height: 32, maxEntries: 5, maxViews: 5, maxDemandsPerView: 1 });
   const [lookAhead, setLookAhead] = createSignal<DrawTile[]>([]);
-  const frontView = createResourceView(tiles, { demand: () => [...(front()?.tiles.map(t => ({ input: t.input, priority: t.priority, pin: true })) ?? []), ...lookAhead().map(t => ({ input: t.input, priority: 1000 + t.priority, pin: false }))] });
+  const frontView = createResourceView(tiles, { demand: () => [...(front()?.tiles.map(t => ({ input: t.input, priority: t.priority, pin: true })) ?? []), ...lookAhead().map(t => ({ input: t.input, priority: t.priority, pin: false }))] });
   const backView = createResourceView(tiles, { demand: () => back()?.tiles.map(t => ({ input: t.input, priority: 100, pin: true })) ?? [] });
   const searches = runtime.createCollection({ key: (i: SearchInput) => JSON.stringify(i), maxEntries: 4, maxViews: 1, maxDemandsPerView: 1,
     maxCost: 4 * 8192, cost: () => 8192, maxResponseBytes: 5000, retry: { attempts: 1, delayFrames: 60, maxDelayFrames: 60 },
@@ -46,33 +53,51 @@ export function createMap(io = offload()) {
   });
   const results = createResourceView(searches, { demand: () => submitted() ? [{ input: submitted()!, priority: -10, pin: true }] : [] });
   const places = createMemo(() => submitted() ? results.value(submitted()!) ?? [] : []);
-  const saved = createSavedPlaces(io, runtime, mode, setMode);
+  const saved = createSavedPlaces(io, runtime, mode, setMode, () => info()?.source);
+  const annotations = createAnnotations(io, runtime), prediction = createMapPrediction();
   const typing = () => mode() === "search" || mode() === "name";
   const listing = () => mode() === "results" || mode() === "saved";
   const rows = () => mode() === "saved" ? saved.page()?.items ?? [] : places();
   const selectedIndex = () => mode() === "saved" ? saved.selection() : selection();
   function select(index: number) { const n = Math.max(0, Math.min(rows().length - 1, index)); if (mode() === "saved") saved.setSelection(n); else setSelection(n); }
-  let previousView = camera.view();
+  prediction.reset(camera.view());
+  const maps = () => info()?.maps ?? [];
+  const choices = () => mode() === "sources" ? maps().map(m => m.name) : LAYERS.map(l => l.name);
+  const choosing = () => mode() === "sources" || mode() === "layers";
+  function openSources() { if (saved.busy() || saved.modal() || typing() || switching()) return; camera.stop(); setSourceError(""); setMode("sources"); setSelection(Math.max(0, maps().findIndex(m => m.kind === info()?.kind))); setMenu(undefined); }
+  function choose(index = selection()) {
+    if (mode() === "sources") { const kind = maps()[index]?.kind; if (kind) switchMap(kind); }
+    else if (mode() === "layers") { annotations.setLayer(LAYERS[index].id); dismiss(); }
+  }
+  function switchMap(kind: MapKind) {
+    if (saved.busy() || saved.modal() || typing() || switching()) return;
+    if (kind === info()?.kind) { dismiss(); return; }
+    const old = info(); if (old?.kind) remembered.set(old.kind, { ...camera.view(), pin: pin() });
+    camera.stop(); if (infoRequest) io.cancel(infoRequest); infoRequest = 0;
+    setSourceError(""); setRequestedKind(kind); setSwitching(true); retryAt = 0; setMode("map"); setStatus(`Opening ${kind === "hyrule" ? "Hyrule" : "OpenStreetMap"}...`);
+  }
   let frame = 0, previousSession = 0, infoRequest = 0, retryAt = 0, shiftAt = -10, levelAge = 0, candidateLevel = HOME.zoom;
   let confirmed = false;
   function search() {
     const text = query().trim(); if (!text) return;
     const v = camera.view(), pos = positionAt(v.x, v.y, planar());
-    const next: SearchInput = { query: text, ...(pos.space === "planar" ? pos : { lat: Math.round(pos.lat * 10) / 10, lon: Math.round(pos.lon * 10) / 10 }) };
+    const next: SearchInput = { query: text, source: info()?.source, ...(pos.space === "planar" ? pos : { lat: Math.round(pos.lat * 10) / 10, lon: Math.round(pos.lon * 10) / 10 }) };
     searches.invalidate(i => JSON.stringify(i) === JSON.stringify(next));
     setSubmitted(next); setSelection(0); setMode("results"); camera.stop();
   }
-  function openSearch() { if (saved.busy() || saved.modal() || mode() === "name") return; camera.stop(); setMode("search"); setMenu(undefined); }
+  function openSearch() { if (saved.busy() || saved.modal() || mode() === "name" || switching() || zoomHeld()) return; camera.stop(); setMode("search"); setMenu(undefined); }
   function go(place = rows()[selectedIndex()]) {
     if (!place) return;
     if ((place.space === "planar") !== planar()) return;
     const pos = worldPosition(place); camera.jump(pos.x, pos.y, Math.min(info()?.maxZoom ?? 18, place.zoom));
+    prediction.reset(camera.view());
     setPin(place); setMode("map"); setMenu(undefined);
   }
   function home(name: string, lat: number, lon: number) { go({ id: name, name, detail: "", lat, lon, zoom: 14 }); }
   function zoom(delta: number) {
     if (delta > 0 && camera.view().zoom >= (info()?.maxZoom ?? 18)) return;
-    camera.zoomBy(delta);
+    if (switching()) return;
+    prediction.zoom(delta); camera.zoomBy(delta);
   }
   function key(value: string) {
     if (!typing() || saved.busy()) return;
@@ -100,21 +125,22 @@ export function createMap(io = offload()) {
     if (bank === "places") {
       if (i === 0) openSearch(); else if (i === 1) saved.open(); else if (i === 2) saveCurrent(); else if (i === 3) go(pin()); else if (info()?.home) go(info()!.home); else home("San Francisco", HOME.lat, HOME.lon);
     } else if (bank === "map") {
-      if (i < 2) zoom(i === 0 ? 1 : -1); else if (i === 2) setPin(undefined); else if (i === 3) tiles.invalidate(); else setMode("about");
+      if (i < 2) zoom(i === 0 ? 1 : -1); else if (i === 2) { setMode("layers"); setSelection(LAYERS.findIndex(l => l.id === annotations.layer())); } else if (i === 3) openSources(); else if (i === 4) setPin(undefined); else if (i === 5) tiles.invalidate(); else setMode("about");
     }
   }
-  onButtonPress(BTN.CIRCLE, () => { if (saved.modal() || saved.busy()) return; if (menu()) runMenu(); else if (typing()) key("GO"); else if (listing()) go(); });
+  onButtonPress(BTN.CIRCLE, (_pressed, buttons) => { if (buttons & BTN.ZL || saved.modal() || saved.busy() || switching() || zoomHeld()) return; if (choosing()) choose(); else if (menu()) runMenu(); else if (typing()) key("GO"); else if (listing()) go(); });
   onButtonPress(BTN.CROSS, () => { if (saved.modal()) { saved.cancelDelete(); return; } if (saved.busy()) return; if (menu()) { confirmed = true; setMenu(undefined); } else if (typing()) key("DEL"); else dismiss(); });
-  onButtonPress(BTN.TRIANGLE, openSearch);
-  onButtonPress(BTN.SQUARE, () => { if (mode() === "map") go(pin()); });
-  for (const [button, delta] of [[BTN.UP, -1], [BTN.DOWN, 1]] as const) onButtonPress(button, () => {
-    if (saved.modal() || saved.busy()) return;
-    if (menu()) setMenuIndex(i => Math.max(0, Math.min(4, i + delta)));
+  onButtonPress(BTN.TRIANGLE, (_pressed, buttons) => { if (!(buttons & BTN.ZL)) openSearch(); });
+  onButtonPress(BTN.SQUARE, (_pressed, buttons) => { if (!(buttons & BTN.ZL) && !switching() && mode() === "map") go(pin()); });
+  for (const [button, delta] of [[BTN.UP, -1], [BTN.DOWN, 1]] as const) onButtonPress(button, (_pressed, buttons) => {
+    if (saved.modal() || saved.busy() || switching() || buttons & BTN.ZL) return;
+    if (menu()) setMenuIndex(i => Math.max(0, Math.min(MENU[menu()!].length - 1, i + delta)));
+    else if (choosing()) setSelection(i => Math.max(0, Math.min(choices().length - 1, i + delta)));
     else if (listing()) select(selectedIndex() + delta);
   });
   onButtonPress(BTN.LEFT, () => { if (mode() === "saved" && !menu() && !saved.modal()) saved.turnPage(-1); });
   onButtonPress(BTN.RIGHT, () => { if (mode() === "saved" && !menu() && !saved.modal()) saved.turnPage(1); });
-  let previousButtons = 0;
+  let previousButtons = 0, zoomRepeat = 0, zoomDirection = 0;
   onFrame(buttons => {
     frame++; const session = io.session(); setOnline(session > 0);
     if (session !== previousSession) {
@@ -125,37 +151,50 @@ export function createMap(io = offload()) {
       previousSession = session;
     }
     if (session > 0 && !infoRequest && frame >= retryAt) {
-      infoRequest = io.request("map.info", "{}", result => {
+      infoRequest = io.request("map.info", JSON.stringify({ kind: requestedKind() }), result => {
         infoRequest = 0; retryAt = frame + 3600;
-        if (!result.ok) { setStatus(result.error); retryAt = frame + 120; return; }
+        if (!result.ok) { if (switching()) { setSourceError("Map unavailable. Choose again to retry."); setMode("sources"); } setStatus(result.error); setSwitching(false); setRequestedKind(info()?.kind); retryAt = frame + 120; return; }
         try {
           const value: MapInfo = JSON.parse(result.value);
           if (typeof value.source !== "string" || !/^[a-f0-9]{16}$/.test(value.source) || typeof value.name !== "string" || typeof value.attribution !== "string" || !Number.isInteger(value.maxZoom) || value.maxZoom < 1 || value.maxZoom > 18
             || !Number.isInteger(value.minZoom ?? 1) || (value.minZoom ?? 1) < 0 || (value.minZoom ?? 1) > value.maxZoom
             || value.space !== undefined && value.space !== "mercator" && value.space !== "planar"
             || value.home !== undefined && (!validPlaces([value.home]) || (value.home.space === "planar") !== (value.space === "planar"))) throw new Error("Invalid map provider");
+          if (value.maps !== undefined && (!Array.isArray(value.maps) || value.maps.length > 2 || !value.maps.every(m => (m.kind === "hyrule" || m.kind === "osm") && typeof m.name === "string" && m.name.length <= 40))) throw new Error("Invalid map catalog");
           if (info()?.source !== value.source) {
+            runtime.cancel(); searches.clear(); labels.clear(); annotations.reset(); saved.reset(); setSubmitted(undefined); setQuery("");
             tiles.clear(); setFront(undefined); setBack(undefined); setLookAhead([]); setPin(undefined);
             camera.setWorld({ minZoom: value.minZoom ?? 1, maxZoom: value.maxZoom, bounds: { width: 256, height: 256, wrapX: value.space !== "planar" } });
-            if (value.home) { const home = worldPosition(value.home); camera.jump(home.x, home.y, value.home.zoom); }
+            const resume = value.kind && remembered.get(value.kind);
+            if (resume) { camera.jump(resume.x, resume.y, resume.zoom); setPin(resume.pin); }
+            else if (value.home) { const home = worldPosition(value.home); camera.jump(home.x, home.y, value.home.zoom); }
+            if (!resume && !value.home) { const p = project(HOME.lat, HOME.lon); camera.jump(p.x, p.y, HOME.zoom); }
+            prediction.reset(camera.view()); candidateLevel = Math.round(camera.view().zoom); levelAge = 0;
           }
-          setInfo(value); setStatus("Map ready");
-        } catch { setStatus("Unsupported map provider"); retryAt = frame + 120; }
+          setInfo(value); setRequestedKind(value.kind); setSwitching(false); setStatus("Map ready");
+        } catch { setSwitching(false); setRequestedKind(info()?.kind); setStatus("Unsupported map provider"); retryAt = frame + 120; }
       });
     }
+    const zl = !!(buttons & BTN.ZL) && mode() === "map" && !saved.modal() && !saved.busy() && !switching();
+    setZoomHeld(zl);
+    const zd = zl ? (buttons & BTN.UP ? 1 : 0) - (buttons & BTN.DOWN ? 1 : 0) : 0;
+    if (zl && !(previousButtons & BTN.ZL)) { camera.endDrag(0, 0); setMenu(undefined); }
+    if (zd && (zd !== zoomDirection || frame >= zoomRepeat)) { zoom(zd); zoomRepeat = frame + Math.round(simulationHz() * (zd === zoomDirection ? .28 : .4)); }
+    zoomDirection = zd;
     const shoulders = buttons & (BTN.LTRIGGER | BTN.RTRIGGER);
     if (!shoulders) { confirmed = false; if (menu()) setMenu(undefined); }
-    else if (!saved.modal() && !saved.busy() && mode() !== "name" && !confirmed && !menu() && shoulders !== (previousButtons & (BTN.LTRIGGER | BTN.RTRIGGER))) {
+    else if (!zl && !switching() && !saved.modal() && !saved.busy() && mode() !== "name" && !confirmed && !menu() && shoulders !== (previousButtons & (BTN.LTRIGGER | BTN.RTRIGGER))) {
       setMenu(shoulders & BTN.LTRIGGER ? "places" : "map"); setMenuIndex(0); camera.stop();
     }
-    const canPan = mode() === "map" && !shoulders && !saved.modal();
+    const canPan = mode() === "map" && !shoulders && !zl && !switching() && !saved.modal();
     const axisX = canPan ? analogX() : 0, axisY = canPan ? analogY() : 0;
     const dx = canPan ? (buttons & BTN.LEFT ? 1 : 0) - (buttons & BTN.RIGHT ? 1 : 0) : 0;
     const dy = canPan ? (buttons & BTN.UP ? 1 : 0) - (buttons & BTN.DOWN ? 1 : 0) : 0;
     camera.step(1 / simulationHz(), dx ? dx * 180 : -axisX * 320, dy ? dy * 180 : -axisY * 320);
     previousButtons = buttons;
     if (!info()) return;
-    const view = camera.view(), next = Math.min(info()!.maxZoom, Math.max(info()!.minZoom ?? 1, Math.round(view.zoom)));
+    const view = camera.view(); prediction.sample(view, 1 / simulationHz(), !planar());
+    const next = Math.min(info()!.maxZoom, Math.max(info()!.minZoom ?? 1, Math.round(view.zoom)));
     levelAge = next === candidateLevel ? levelAge + 1 : 0; candidateLevel = next;
     let level = front()?.level ?? next;
     if (next !== level && (levelAge >= 8 || Math.abs(next - level) > 1)) {
@@ -163,21 +202,11 @@ export function createMap(io = offload()) {
       setBack(previous ? { ...previous, tiles: previous.tiles.filter(t => frontView.state(t.input).status === "ready") } : undefined);
       level = next;
     }
-    let leadX = view.x - previousView.x; if (!planar()) leadX -= Math.round(leadX / 256) * 256;
-    const leadY = view.y - previousView.y;
-    const moving = view.moving && Math.hypot(leadX, leadY) * view.scale < 24 && Math.abs(view.zoom - level) < 0.02;
-    // Start nearby work earlier without expanding the four-tile source budget.
-    // At 320px/s, a 64px margin did not even cover a cached 128 KiB LAN transfer.
-    const local = info()!.local === true, leadLimit = local ? 384 : 128;
-    const planOptions = { ...view, level, width: 400, height: 240, maxTiles: 12, margin: local ? 256 : 128,
-      leadX: moving ? Math.max(-leadLimit, Math.min(leadLimit, leadX * view.scale * (local ? 48 : 36))) : 0,
-      leadY: moving ? Math.max(-leadLimit, Math.min(leadLimit, leadY * view.scale * (local ? 48 : 36))) : 0, maxExtra: Math.abs(view.zoom - level) < 0.02 ? local ? 12 : 4 : 0 };
-    let window;
-    try { window = planTileWindow(planOptions); }
-    catch { level = next; window = planTileWindow({ ...planOptions, level, maxExtra: 0 }); }
-    previousView = view;
-    const address = (list: typeof window.visible) => list.filter(t => t.row >= 0 && t.row < 2 ** level && (!planar() || t.column >= 0 && t.column < 2 ** level)).map(t => ({ ...t, input: { source: info()!.source, z: level, x: wrapTile(t.column, level), y: t.row } }));
-    const draw = address(window.visible), ahead = address(window.lookAhead);
+    let plan;
+    try { plan = prediction.plan(view, level, info()!); }
+    catch { level = next; plan = prediction.plan(view, level, info()!); }
+    const draw = plan.visible, ahead = plan.extra;
+    annotations.update(view, next, info()!);
     if (ahead.length !== lookAhead().length || ahead.some((t, i) => { const o = lookAhead()[i]; return !o || t.input.z !== o.input.z || t.input.x !== o.input.x || t.input.y !== o.input.y; })) setLookAhead(ahead);
     const previous = front();
     if (!previous || previous.level !== level || previous.tiles.length !== draw.length || draw.some(t => !previous.tiles.some(o => o.column === t.column && o.row === t.row))) {
@@ -189,7 +218,7 @@ export function createMap(io = offload()) {
     }
     if (back() && front()?.tiles.every(t => frontView.state(t.input).status === "ready")) setBack(undefined);
   });
-  return { io, runtime, tiles, labels, frontView, backView, info, planar, online, status, mode, setMode, query, setQuery, submitted, results, places, selection, setSelection, pin, menu, menuIndex,
+  return { io, runtime, tiles, labels, frontView, backView, info, planar, online, zoomHeld, switching, sourceError, maps, choices, choosing, choose, openSources, switchMap, annotations, status, mode, setMode, query, setQuery, submitted, results, places, selection, setSelection, pin, menu, menuIndex,
     shift, symbols, front, back, camera, saved, typing, listing, rows, selectedIndex, select, saveCurrent, lookAhead, search, openSearch, go, zoom, key, dismiss, runMenu,
     clearBack: () => setBack(undefined),
     diagnostics: () => ({ frame, pending: io.pending(), resources: runtime.stats(), tiles: tiles.stats(), camera: camera.view() }),

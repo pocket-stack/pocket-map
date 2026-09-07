@@ -9,7 +9,8 @@ import { onFrame } from "@pocketjs/framework/lifecycle";
 import * as hot from "@pocketjs/framework/hot";
 import { createMap, MENU, type MapModel, type Layer } from "./model.ts";
 import { worldPosition, unproject, scaleBar } from "./geo.ts";
-import type { Place } from "../shared/types.ts";
+import type { Place, MapMarker } from "../shared/types.ts";
+const MARKER_ICONS = { landmark: "marker-landmark.svg", tower: "marker-tower.svg", shrine: "marker-shrine.svg", stable: "marker-stable.svg", village: "marker-village.svg", seed: "marker-seed.svg", treasure: "marker-treasure.svg", enemy: "marker-enemy.svg", special: "marker-special.svg" };
 const box = (x: number, y: number, w: number, h: number) => ({ posType: 1, insetL: x, insetT: y, width: w, height: h });
 
 function TileLayer(p: { s: MapModel; back?: boolean }) {
@@ -35,6 +36,44 @@ function TileLayer(p: { s: MapModel; back?: boolean }) {
       </View>} errorFallback={() => <View class="w-full h-full bg-[#e6e7de]"><Text class="absolute left-[60] top-[112] text-xs text-[#73796c]">Tile unavailable</Text></View>} />}</For>
   </View>;
 }
+function Annotation(p: { s: MapModel; marker: MapMarker }) {
+  let root: NodeMirror | undefined;
+  onFrame(() => {
+    const v = p.s.camera.view(), x = 200 + (p.marker[3] - v.x) * v.scale, y = 120 + (p.marker[4] - v.y) * v.scale;
+    hot.prop(root, "translateX", x - 7); hot.prop(root, "translateY", y - 7);
+    hot.prop(root, "display", x < -100 || x > 410 || y < 18 || y > 235 ? 1 : 0);
+  });
+  return <View ref={root} debugName="MapAnnotation" style={box(0, 0, 118, 17)}>
+    <View class="absolute left-[12] top-[1] w-[105] h-[14] rounded-[2] bg-[#fff8e9df]" />
+    <Image src={MARKER_ICONS[p.marker[2]]} style={box(0, 0, 15, 15)} />
+    <Text class="absolute left-[17] top-[2] text-xs text-[#3b3027]">{p.marker[1].length > 16 ? p.marker[1].slice(0, 13) + "..." : p.marker[1]}</Text>
+  </View>;
+}
+function ZoomRail(p: { s: MapModel }) {
+  let thumb: NodeMirror | undefined, label: NodeMirror | undefined;
+  onFrame(() => {
+    const v = p.s.camera.view(), min = p.s.info()?.minZoom ?? 1, max = p.s.info()?.maxZoom ?? 18;
+    hot.prop(thumb, "translateY", 124 * (1 - (v.targetZoom - min) / Math.max(1, max - min)));
+    hot.text(label, `${Math.round(v.targetZoom)}`);
+  });
+  return <Show when={p.s.zoomHeld()}><ClassicPanel active style={box(318, 32, 75, 194)}>
+    <Text class="absolute left-0 right-0 top-[6] text-xs font-bold text-center text-white">Zoom</Text>
+    <Text class="absolute left-[5] top-[35] text-xs text-[#536b84]">{p.s.info()?.maxZoom ?? 18}</Text>
+    <View class="absolute left-[32] top-[40] w-[7] h-[132] rounded-[3] border border-[#8ca0b8] bg-[#b8c7d7]" />
+    <View ref={thumb} style={box(23, 36, 26, 17)}><ClassicFace selected style={box(0, 0, 26, 17)}><Text ref={label} class="absolute left-0 right-0 top-[2] text-xs text-center text-white">4</Text></ClassicFace></View>
+    <Text class="absolute left-[5] top-[160] text-xs text-[#536b84]">{p.s.info()?.minZoom ?? 1}</Text>
+    <Text class="absolute left-0 right-0 bottom-[4] text-xs text-center text-[#536b84]">ZL + D-pad</Text>
+  </ClassicPanel></Show>;
+}
+function ChoicePanel(p: { s: MapModel }) {
+  return <Show when={p.s.choosing()}><ClassicPanel active style={box(46, 31, 308, 190)}>
+    <Text class="absolute left-0 right-0 top-[6] text-xs font-bold text-center text-white">{p.s.mode() === "sources" ? "Choose a map" : "Map labels"}</Text>
+    <For each={p.s.choices()}>{(name, i) => <ClassicFace selected={p.s.selection() === i()} style={box(9, 34 + i() * 26, 290, 24)}>
+      <Text class="absolute left-[10] top-[5] text-xs" style={{ textColor: p.s.selection() === i() ? "#ffffff" : "#304f78" }}>{name}</Text>
+    </ClassicFace>}</For>
+    <Text class="absolute left-0 right-0 bottom-[6] text-xs text-center text-[#536b84]">{p.s.sourceError() || "D-pad: choose   A: apply   B: return"}</Text>
+  </ClassicPanel></Show>;
+}
 function PlaceRow(p: { s: MapModel; place: Place; index: number }) {
   const unicode = /[^\x20-\x7e]/.test(p.place.name + p.place.detail);
   const image = createResourceView(p.s.labels, { demand: () => unicode && p.s.listing() ? [{ input: p.place, priority: -5, pin: true }] : [] });
@@ -57,12 +96,12 @@ function SearchResults(p: { s: MapModel }) {
 }
 function Context(p: { s: MapModel }) {
   return <Show when={p.s.menu()}>{bank => <View class="absolute left-0 top-0 w-full h-full bg-[#18263a66]">
-    <ClassicPanel active style={box(63, 29, 274, 183)}>
+    <ClassicPanel active style={box(63, 26, 274, 204)}>
       <Text class="absolute left-0 right-0 top-[6] text-center text-xs font-bold text-white">{bank() === "places" ? "Places" : "Map controls"}</Text>
-      <For each={MENU[bank()]}>{(name, i) => <ClassicFace selected={p.s.menuIndex() === i()} style={box(9, 34 + i() * 24, 256, 22)}>
+      <For each={MENU[bank()]}>{(name, i) => <ClassicFace selected={p.s.menuIndex() === i()} style={box(9, 31 + i() * 22, 256, 20)}>
         <Text class="absolute left-[10] top-[3] text-xs" style={{ textColor: p.s.menuIndex() === i() ? "#ffffff" : "#304f78" }}>{name}</Text>
       </ClassicFace>}</For>
-      <Text class="absolute left-0 right-0 bottom-[7] text-center text-xs text-[#536b84]">D-pad: choose   A: open   B: cancel</Text>
+      <Text class="absolute left-0 right-0 bottom-[4] text-center text-xs text-[#536b84]">D-pad: choose   A: open   B: cancel</Text>
     </ClassicPanel>
   </View>}</Show>;
 }
@@ -92,23 +131,23 @@ function Deck(p: { s: MapModel }) {
   const filter = createDragFilter();
   const [touching, setTouching] = createSignal(false);
   const typing = p.s.typing, results = p.s.listing, saved = () => p.s.mode() === "saved", naming = () => p.s.mode() === "name";
-  const blocked = () => !!p.s.menu() || p.s.saved.modal() || p.s.saved.busy();
+  const blocked = () => !!p.s.menu() || p.s.saved.modal() || p.s.saved.busy() || p.s.switching() || p.s.zoomHeld();
   const top = () => typing() ? 136 : 40, height = () => 194 - top();
   createGesture({ surface: "auxiliary", region: { node: () => pad }, panSlop: 2,
-    onDown() { if (blocked() || naming()) return; setTouching(true); dy = 0; filter.reset(); p.s.camera.beginDrag(); },
+    onDown() { if (blocked() || naming() || p.s.choosing()) return; setTouching(true); dy = 0; filter.reset(); p.s.camera.beginDrag(); },
     onPanMove(c) {
-      if (blocked() || naming()) return;
+      if (blocked() || naming() || p.s.choosing()) return;
       if (results()) { dy += c.fdy; const step = Math.trunc(dy / 20); if (step) { p.s.select(p.s.selectedIndex() + step); dy -= step * 20; } }
       else { const delta = filter.update(c.dx, c.dy, 1 / simulationHz()); p.s.camera.drag(delta.dx * 1.45, delta.dy * 1.45); }
     },
-    onPanEnd() { setTouching(false); if (blocked() || naming()) return; const v = filter.velocity(); p.s.camera.endDrag(results() ? 0 : v.x * 1.45, results() ? 0 : v.y * 1.45); },
-    onTap() { setTouching(false); if (blocked() || naming()) return; p.s.camera.endDrag(0, 0); if (results()) p.s.go(); },
+    onPanEnd() { setTouching(false); if (blocked() || naming() || p.s.choosing()) return; const v = filter.velocity(); p.s.camera.endDrag(results() ? 0 : v.x * 1.45, results() ? 0 : v.y * 1.45); },
+    onTap() { setTouching(false); if (blocked() || naming() || p.s.choosing()) return; p.s.camera.endDrag(0, 0); if (results()) p.s.go(); },
     onCancel() { setTouching(false); p.s.camera.stop(); },
   });
   // Build fixed controls outside the outer wrapper's mount stack on QuickJS.
   const keyboard = <Keyboard s={p.s} />;
-  const search = <ClassicButton debugName="SearchButton" label={typing() ? "Cancel" : saved() || p.s.mode() === "about" ? "Map" : "Search"} surface="auxiliary" tone="primary" disabled={blocked()} style={box(6, 6, 60, 28)} onPress={() => typing() || saved() || p.s.mode() === "about" ? p.s.dismiss() : p.s.openSearch()} />;
-  const padView = <ClassicPanel ref={pad} debugName="MapTouchpad" active headerHeight={22} style={{ ...box(6, top(), 246, height()), opacity: blocked() ? 0.5 : 1 }}>
+  const search = <ClassicButton debugName="SearchButton" label={typing() ? "Cancel" : saved() || p.s.mode() === "about" || p.s.choosing() ? "Map" : "Search"} surface="auxiliary" tone="primary" disabled={blocked()} style={box(6, 6, 60, 28)} onPress={() => typing() || saved() || p.s.mode() === "about" || p.s.choosing() ? p.s.dismiss() : p.s.openSearch()} />;
+  const padView = <ClassicPanel ref={pad} debugName="MapTouchpad" active headerHeight={22} style={{ ...box(6, top(), 246, height()), opacity: blocked() ? 0.5 : 1, display: p.s.choosing() ? 1 : 0 }}>
     <Text class="absolute left-0 right-0 top-[4] text-xs text-center font-bold text-white">{naming() ? p.s.saved.editing() ? "Rename saved place" : "Save place to your Mac" : results() ? "Choose a place" : touching() ? "Moving map" : "Map touchpad"}</Text>
     <Show when={!typing()}>
       <Image src="map-pad.svg" style={box(99, 41, 48, 48)} />
@@ -117,19 +156,24 @@ function Deck(p: { s: MapModel }) {
     </Show>
     <Show when={typing()}><Text class="absolute left-0 right-0 top-[32] text-xs text-center text-[#62758c]">{naming() ? p.s.saved.busy() ? "Saving on your Mac..." : p.s.saved.error() || "Name this location, then tap Save" : "Drag here to move the map"}</Text></Show>
   </ClassicPanel>;
-  const plus = <ClassicButton debugName="ZoomIn" label={saved() ? "Prev" : "+"} surface="auxiliary" style={box(258, top(), 56, Math.floor((height() - 6) / 2))} disabled={blocked() || naming() || (saved() ? !(p.s.saved.page()?.offset) : results())} onPress={() => saved() ? p.s.saved.turnPage(-1) : p.s.zoom(1)} />;
-  const minus = <ClassicButton debugName="ZoomOut" label={saved() ? "Next" : "-"} surface="auxiliary" style={box(258, top() + Math.floor((height() - 6) / 2) + 6, 56, Math.floor((height() - 6) / 2))} disabled={blocked() || naming() || (saved() ? !p.s.saved.page() || p.s.saved.page()!.offset + 5 >= p.s.saved.page()!.total : results())} onPress={() => saved() ? p.s.saved.turnPage(1) : p.s.zoom(-1)} />;
-  const left = <ClassicButton debugName="PinButton" label={typing() ? "Clear" : saved() ? "Rename" : results() ? "Map" : "Back to pin"} surface="auxiliary" style={box(6, 200, 99, 34)} disabled={blocked() || saved() && !p.s.saved.selected() || !typing() && !results() && !p.s.pin()} onPress={() => naming() ? p.s.saved.changeName("") : typing() ? p.s.setQuery("") : saved() ? p.s.saved.begin(p.s.saved.selected()!, true) : results() ? p.s.dismiss() : p.s.go(p.s.pin())} />;
-  const middle = <ClassicButton debugName="SaveButton" label={saved() ? "Delete" : results() ? "Save place" : "Save view"} surface="auxiliary" style={{ ...box(111, 200, 98, 34), display: typing() ? 1 : 0 }} disabled={blocked() || results() && !p.s.rows().length} onPress={() => saved() ? p.s.saved.askRemove() : p.s.saveCurrent()} />;
-  const right = <ClassicButton debugName="GoButton" label={naming() ? p.s.saved.busy() ? "Saving..." : p.s.saved.error() ? "Retry" : "Save" : typing() ? "Find" : results() ? "Go to place" : "Saved"} surface="auxiliary" tone="primary" style={box(typing() ? 111 : 215, 200, typing() ? 203 : 99, 34)} disabled={blocked() || results() && !p.s.rows().length || typing() && !(naming() ? p.s.saved.name() : p.s.query()).trim()} onPress={() => typing() ? p.s.key("GO") : results() ? p.s.go() : p.s.saved.open()} />;
+  const plus = <ClassicButton debugName="ZoomIn" label={saved() ? "Prev" : "+"} surface="auxiliary" style={{ ...box(258, top(), 56, Math.floor((height() - 6) / 2)), display: p.s.choosing() ? 1 : 0 }} disabled={blocked() || naming() || (saved() ? !(p.s.saved.page()?.offset) : results())} onPress={() => saved() ? p.s.saved.turnPage(-1) : p.s.zoom(1)} />;
+  const minus = <ClassicButton debugName="ZoomOut" label={saved() ? "Next" : "-"} surface="auxiliary" style={{ ...box(258, top() + Math.floor((height() - 6) / 2) + 6, 56, Math.floor((height() - 6) / 2)), display: p.s.choosing() ? 1 : 0 }} disabled={blocked() || naming() || (saved() ? !p.s.saved.page() || p.s.saved.page()!.offset + 5 >= p.s.saved.page()!.total : results())} onPress={() => saved() ? p.s.saved.turnPage(1) : p.s.zoom(-1)} />;
+  const left = <ClassicButton debugName="PinButton" label={typing() ? "Clear" : saved() ? "Rename" : results() ? "Map" : "Back to pin"} surface="auxiliary" style={{ ...box(6, 200, 99, 34), display: p.s.choosing() ? 1 : 0 }} disabled={blocked() || saved() && !p.s.saved.selected() || !typing() && !results() && !p.s.pin()} onPress={() => naming() ? p.s.saved.changeName("") : typing() ? p.s.setQuery("") : saved() ? p.s.saved.begin(p.s.saved.selected()!, true) : results() ? p.s.dismiss() : p.s.go(p.s.pin())} />;
+  const middle = <ClassicButton debugName="SaveButton" label={saved() ? "Delete" : results() ? "Save place" : "Save view"} surface="auxiliary" style={{ ...box(111, 200, 98, 34), display: typing() || p.s.choosing() ? 1 : 0 }} disabled={blocked() || results() && !p.s.rows().length} onPress={() => saved() ? p.s.saved.askRemove() : p.s.saveCurrent()} />;
+  const right = <ClassicButton debugName="GoButton" label={naming() ? p.s.saved.busy() ? "Saving..." : p.s.saved.error() ? "Retry" : "Save" : typing() ? "Find" : results() ? "Go to place" : "Saved"} surface="auxiliary" tone="primary" style={{ ...box(typing() ? 111 : 215, 200, typing() ? 203 : 99, 34), display: p.s.choosing() ? 1 : 0 }} disabled={blocked() || results() && !p.s.rows().length || typing() && !(naming() ? p.s.saved.name() : p.s.query()).trim()} onPress={() => typing() ? p.s.key("GO") : results() ? p.s.go() : p.s.saved.open()} />;
   const sheet = <ClassicSheet debugName="DeleteSavedPlace" open={!!p.s.saved.deleting()} title="Delete saved place?" message={p.s.saved.error() || p.s.saved.deleting()?.name} surface="auxiliary" cancelLabel="Keep place" cancelDisabled={p.s.saved.busy()} onCancel={p.s.saved.cancelDelete} onModalChange={p.s.saved.setModal}
     actions={[{ get label() { return p.s.saved.busy() ? "Deleting..." : p.s.saved.error() ? "Retry delete" : "Delete place"; }, tone: "danger", get disabled() { return p.s.saved.busy(); }, onPress: p.s.saved.remove }]} />;
   return <AuxiliarySurface><View class="relative w-[320] h-[240] bg-[#d5dde7]">
     <View class="absolute left-0 top-0 w-full h-[38] bg-gradient-to-b from-[#eef3f9] to-[#b5c5d8]" />
     {search}
-    <View class="absolute left-[72] top-[6] w-[242] h-[28] rounded-[5] border border-[#91a3ba] bg-white overflow-hidden">
+    <View class="absolute left-[72] top-[6] w-[242] h-[28] rounded-[5] border border-[#91a3ba] bg-white overflow-hidden" style={{ display: typing() || results() ? 0 : 1 }}>
       <Text class="absolute left-[7] top-[7] text-xs text-[#354d67]">{typing() ? `${(naming() ? p.s.saved.name() : p.s.query()).slice(-31)}|` : saved() ? "Saved on your paired Mac" : results() ? p.s.query().slice(0, 32) : p.s.online() ? p.s.planar() ? "Hyrule - Breath of the Wild" : "Explore with your Nintendo 3DS" : "Waiting for paired Mac"}</Text>
     </View>
+    <ClassicButton debugName="MapSourceButton" label={p.s.switching() ? "Opening map..." : `Map: ${p.s.planar() ? "Hyrule" : "OpenStreetMap"}`} surface="auxiliary" style={{ ...box(72, 6, 242, 28), display: typing() || results() ? 1 : 0 }} disabled={blocked() || !p.s.maps().length} onPress={p.s.openSources} />
+    <Show when={p.s.choosing()}><View style={box(6, 40, 308, 194)}>
+      <For each={p.s.choices()}>{(name, i) => <ClassicButton label={name} surface="auxiliary" tone={p.s.selection() === i() ? "primary" : undefined} style={box(0, i() * 30, 308, 27)} onPress={() => p.s.choose(i())} />}</For>
+      <ClassicButton label="Back to map" surface="auxiliary" style={box(0, 160, 308, 34)} onPress={p.s.dismiss} />
+    </View></Show>
     {keyboard}{padView}{plus}{minus}{left}{middle}{right}{sheet}
   </View></AuxiliarySurface>;
 }
@@ -148,6 +192,7 @@ export default function MapApp() {
   const deck = <Deck s={s} />;
   const map = <View debugName="MapViewport" class="absolute left-0 top-0 w-[400] h-[240] overflow-hidden bg-[#e6e7de]">
     <TileLayer s={s} back /><TileLayer s={s} />
+    <For each={s.annotations.rows()}>{marker => <Annotation s={s} marker={marker} />}</For>
     <Image ref={marker} src="map-pin.svg" style={{ ...box(0, 0, 16, 24), display: s.pin() ? 0 : 1 }} />
   </View>;
   return <><View class="relative w-[400] h-[240] bg-[#e6e7de]">
@@ -161,7 +206,7 @@ export default function MapApp() {
       <Text ref={scaleText} class="absolute left-[5] top-[1] w-[70] h-[14] text-xs text-[#374c58]">500 m</Text>
       <View ref={bar} style={{ ...box(5, 19, 70, 3), bgColor: "#374c58", originX: -0.5 }} />
     </View>
-    <Show when={!s.online() || !s.info()}><View class="absolute left-[86] top-[102] w-[228] h-[37] rounded-[5] border border-[#a4b2be] bg-[#fffffff0]">
+    <Show when={!s.online() || !s.info() || s.switching()}><View class="absolute left-[86] top-[102] w-[228] h-[37] rounded-[5] border border-[#a4b2be] bg-[#fffffff0]">
       <Text class="absolute left-[6] right-[6] top-[12] text-xs text-center text-[#52667a]">{s.status().slice(0, 35)}</Text>
     </View></Show>
     <Show when={s.mode() === "name" && !s.saved.editing()}><View class="absolute left-[194] top-[114] w-[12] h-[12]">
@@ -170,9 +215,9 @@ export default function MapApp() {
     <SearchResults s={s} />
     <Show when={s.mode() === "about"}><ClassicPanel active style={box(24, 35, 352, 175)}>
       <Text class="absolute left-0 right-0 top-[7] text-xs text-center text-white font-bold">Pocket Map</Text>
-      <Text class="absolute left-[14] top-[37] text-xs text-[#354d67]">{`Stylus / Circle Pad / D-pad: pan\n+ and -: zoom around the map center\nY: search   X: return to selected place\nHold L: places   Hold R: map controls\n\n${s.planar() ? "Hyrule: Breath of the Wild\nMap art: Nintendo | Data: Zelda Dungeon\nMap and place search stored on your Mac" : "Maps: OpenStreetMap contributors\nosm.org/copyright | Tiles: OSM DE\nPlace search: Photon by komoot"}`}</Text>
+      <Text class="absolute left-[14] top-[37] text-xs text-[#354d67]">{`Stylus / Circle Pad / D-pad: pan\n+ and -: zoom around the map center\nY: search   X: return to selected place\nHold L: places   Hold R: map controls\nHold ZL + Up/Down: zoom level\n\n${s.planar() ? "Hyrule: Breath of the Wild\nMap art: Nintendo | Data: Zelda Dungeon\nMap and place search stored on your Mac" : "Maps: OpenStreetMap contributors\nosm.org/copyright | Tiles: OSM DE\nPlace search: Photon by komoot"}`}</Text>
     </ClassicPanel></Show>
-    <Context s={s} />
+    <ChoicePanel s={s} /><Context s={s} /><ZoomRail s={s} />
     <View class="absolute right-0 bottom-0 h-[15] bg-[#ffffffee]" style={{ width: 235 }}><Text class="absolute right-[3] top-[1] text-xs text-[#35434b]">{s.info()?.attribution ?? "Map data"}</Text></View>
   </View>{deck}</>;
 }

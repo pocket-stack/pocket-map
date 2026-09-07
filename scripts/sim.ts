@@ -5,6 +5,7 @@ import { NODE_TYPE, PROP, BTN } from "../runtime/contracts/spec/spec.ts";
 import { encodePNG } from "../runtime/tests/png.ts";
 import { dispatchOffload } from "../runtime/tools/offload-provider.ts";
 import { MapProvider, defaultConfig } from "../host/provider.ts";
+import { MapService } from "../host/service.ts";
 import { AtlasProvider } from "../host/atlas.ts";
 import type { MapModel } from "../app/model.ts";
 import type { OffloadImage } from "../runtime/contracts/spec/offload.ts";
@@ -22,6 +23,7 @@ const provider = hyrule ? new AtlasProvider(".local/hyrule") : new MapProvider({
   ] }));
   return new Response(fixture.toBuffer("image/png"));
 }) as typeof fetch);
+const service = hyrule ? new MapService({ ...defaultConfig, cache: ":memory:", atlas: ".local/hyrule", kind: "hyrule" }, async () => new Response(fixture.toBuffer("image/png"))) : undefined;
 const wasm = await createWasmUi(await Bun.file("runtime/hosts/web/pocketjs.wasm").arrayBuffer(), { width: 400, height: 480 });
 const ops = wasm.ops;
 ops.hitTestBoundsAuxiliary = (x, y) => ops.hitTestBounds!(x + 40, y + 240);
@@ -61,7 +63,7 @@ async function frames(n: number, buttons = 0, touch?: [number, number], analog =
     const d = s.diagnostics(); maxPending = Math.max(maxPending, d.pending); maxResident = Math.max(maxResident, d.tiles.entries);
     while (requests.length && images.size < 8) {
       const raw = requests.shift()!;
-      const request = JSON.parse(raw), result = await dispatchOffload(provider.methods(), request);
+      const request = JSON.parse(raw), result = await dispatchOffload(service?.methods() ?? provider.methods(), request);
       if (loseCommandAck && request.method === "bookmarks.command") {
         loseCommandAck = false; replies.push({ at: tick + 3, raw: JSON.stringify({ id: result.id, error: "Simulated lost acknowledgement" }) }); continue;
       }
@@ -83,6 +85,7 @@ await shot("map");
 await tap(30, 18); check(s.mode() === "search", "Search touch button opens local keyboard");
 await shot("keyboard");
 if (hyrule) {
+  check(s.annotations.rows().length > 0, "Real indexed game markers materialize as bounded map labels");
   check(s.planar() && s.info()?.local, "Hyrule opens as a local finite atlas with its own home and zoom bounds");
   s.setQuery("Kakariko"); s.search(); await frames(40); await shot("results");
   check(s.places().some(p => p.name.includes("Kakariko")), "SQLite place search finds Kakariko without an HTTP request");
@@ -90,6 +93,21 @@ if (hyrule) {
   check(s.pin()?.space === "planar" && s.front()!.tiles.every(t => s.frontView.state(t.input).status === "ready"), "Search navigation places the pin in atlas coordinates and resolves the village tiles");
   s.camera.jump(128, 128, 0); await frames(100); await shot("overview");
   check(s.front()!.tiles.length === 1 && s.front()!.tiles[0].input.z === 0, "Minimum zoom covers the finite world without wrapping copies");
+  s.camera.jump(128, 128, 4); await frames(100);
+  const zoomPosition = s.camera.view();
+  await frames(1, BTN.ZL | BTN.UP); await frames(20, BTN.ZL); await shot("zoom-rail");
+  check(s.zoomHeld() && s.camera.view().zoom === 5 && s.camera.view().x === zoomPosition.x && s.camera.view().y === zoomPosition.y, "ZL owns Up/Down zoom without panning the map");
+  check(s.lookAhead().some(t => t.input.z === 6), "Zoom in primes the next level through the shared resource collection");
+  await frames(1); check(!s.zoomHeld(), "Releasing ZL dismisses its rail");
+  const resume = s.camera.view(); await tap(180, 18);
+  check(s.mode() === "sources", "Map header opens the live source chooser"); await shot("sources");
+  await tap(130, 53 + s.maps().findIndex(m => m.kind === "osm") * 30); await frames(100);
+  check(!s.planar() && s.front()!.tiles.every(t => t.input.source === s.info()!.source), "Hyrule switches to synthetic OSM without restarting the guest or daemon");
+  await tap(180, 18); await tap(130, 53 + s.maps().findIndex(m => m.kind === "hyrule") * 30); await frames(100);
+  check(s.planar() && s.camera.view().x === resume.x && s.camera.view().zoom === resume.zoom, "Switching back restores Hyrule coordinates and zoom");
+  s.setMode("layers"); await frames(2); await shot("layers"); s.choose(2); await frames(100);
+  check(s.annotations.layer() === "collectibles" && s.annotations.rows().every(m => m[2] !== "seed" && m[2] !== "treasure"), "Koroks and treasures remain hidden below their useful zoom range");
+  s.annotations.setLayer("all");
   replyDelay = 30;
   s.camera.jump((32 * 256 - 300) / 64, (32 * 256 + 128) / 64, 6); await frames(180);
   const edge = { source: s.info()!.source, z: 6, x: 32, y: 32 };
@@ -99,6 +117,18 @@ if (hyrule) {
   await frames(180, 0, undefined, 0x80ff); await frames(220);
   check(s.front()!.tiles.every(t => s.frontView.state(t.input).status === "ready"), "The local atlas catches up after sustained motion with delayed replies");
   check(s.lookAhead().length <= 12 && maxResident <= 40 && maxPending <= 4 && maxStaging <= 8, "Larger local prefetch stays within device request, staging and residency budgets");
+  replyDelay = 30;
+  s.camera.jump(128, 128, 6); await frames(120);
+  for (let stroke = 0; stroke < 4; stroke++) {
+    await frames(1, 0, [185, 95]);
+    for (let n = 1; n <= 6; n++) await frames(1, 0, [185 - n * 10, 95 + n * 8]);
+    await frames(30);
+  }
+  s.camera.stop(); await frames(12);
+  const directionView = s.camera.view();
+  check(s.lookAhead().length > 3 && s.lookAhead().every(t => t.input.z === 6 &&
+    ((t.column + .5) * 256 / 64 - directionView.x) - ((t.row + .5) * 256 / 64 - directionView.y) > 0),
+    "Repeated real touch strokes retain northeast-only look-ahead after lifting the stylus");
   replyDelay = 3; await frames(100); await shot("pan");
   check(images.size === 0, "Atlas navigation releases every consumed or cancelled image ticket");
 } else if (live) {
@@ -164,6 +194,6 @@ if (hyrule) {
     await frames(50);
   }
 }
-const receipt = { mode: hyrule ? "complete local Hyrule atlas, compiled guest + Wasm" : live ? "live OSM DE / Photon, compiled guest + Wasm" : "deterministic synthetic provider, compiled guest + Wasm", frames: tick, checks, maxPending, maxResident, maxStaging, ...provider.diagnostics(),
+const receipt = { mode: hyrule ? "complete local Hyrule atlas, compiled guest + Wasm" : live ? "live OSM DE / Photon, compiled guest + Wasm" : "deterministic synthetic provider, compiled guest + Wasm", frames: tick, checks, maxPending, maxResident, maxStaging, ...(service ? service.diagnostics() : provider.diagnostics()),
   hardwareAcceptance: "pending", performance: "Replay validates behavior and budgets, not device frame time" };
-await Bun.write(`dist/qa/${hyrule ? "hyrule" : live ? "live" : "replay"}.json`, JSON.stringify(receipt, null, 2)); console.log(receipt); provider.close();
+await Bun.write(`dist/qa/${hyrule ? "hyrule" : live ? "live" : "replay"}.json`, JSON.stringify(receipt, null, 2)); console.log(receipt); service?.close(); provider.close();

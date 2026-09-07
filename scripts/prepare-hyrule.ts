@@ -1,3 +1,4 @@
+import { prepareMarkers } from "../host/markers.ts";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, renameSync, rmSync, readdirSync } from "node:fs";
 import { resolve, join } from "node:path";
@@ -17,14 +18,6 @@ async function git(...args: string[]) {
   return text.trim();
 }
 mkdirSync(directory, { recursive: true });
-if (existsSync(output) && !process.argv.includes("--rebuild")) {
-  const db = new Database(output, { readonly: true });
-  const manifest = JSON.parse((db.query("SELECT value FROM metadata WHERE key='manifest'").get() as { value: string }).value) as AtlasManifest;
-  db.close();
-  if (manifest.revision !== HYRULE_REVISION || manifest.format !== ATLAS_FORMAT) throw new Error("Atlas version differs; use --rebuild");
-  console.log(`Hyrule ready: ${manifest.tiles} local textures, ${manifest.places} searchable places`);
-  process.exit(0);
-}
 if (!existsSync(join(source, ".git"))) await git("clone", "--depth", "1", "--filter=blob:none", "--sparse", "--branch", "develop", "https://github.com/zeldadungeon/maps.git", source);
 if (await git("-C", source, "rev-parse", "HEAD") !== HYRULE_REVISION) {
   await git("-C", source, "fetch", "--depth", "1", "origin", HYRULE_REVISION);
@@ -32,6 +25,17 @@ if (await git("-C", source, "rev-parse", "HEAD") !== HYRULE_REVISION) {
 }
 await git("-C", source, "sparse-checkout", "set", "public/botw");
 const assets = join(source, "public/botw");
+if (existsSync(output) && !process.argv.includes("--rebuild")) {
+  const db = new Database(output, { readonly: true });
+  const manifest = JSON.parse((db.query("SELECT value FROM metadata WHERE key='manifest'").get() as { value: string }).value) as AtlasManifest;
+  db.close();
+  if (manifest.revision !== HYRULE_REVISION || manifest.format !== ATLAS_FORMAT) throw new Error("Atlas version differs; use --rebuild");
+  const markers = await prepareMarkers(directory, join(source, "public/botw"));
+  console.log(`Marker index ready: ${markers} annotations`);
+  console.log(`Hyrule ready: ${manifest.tiles} local textures, ${manifest.places} searchable places`);
+  process.exit(0);
+}
+
 for (let z = 0; z <= 5; z++) {
   if (readdirSync(join(assets, `tiles/${z}`)).filter(file => file.endsWith(".jpg")).length !== 4 ** z) throw new Error("Incomplete source tile pyramid");
 }
@@ -92,5 +96,6 @@ try {
   db.query("INSERT INTO metadata VALUES ('manifest',?)").run(JSON.stringify(manifest));
   db.close(); renameSync(pending, output);
   await Bun.write(join(directory, "manifest.json"), JSON.stringify(manifest, null, 2));
+  console.log(`Marker index ready: ${await prepareMarkers(directory, assets)} annotations`);
   console.log(`Hyrule ready: ${tiles} textures and ${places} searchable places, no runtime internet access`);
 } catch (error) { db.close(); throw error; }

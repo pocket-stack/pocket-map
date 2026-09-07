@@ -129,3 +129,33 @@ seconds. The source's documented per-IP speed allowance means absence of HTTP
 service dependency. It does not establish the 3DS bandwidth limit or continuous
 60 fps. The new device session has returned frame telemetry and image requests;
 physical gesture acceptance remains separate from liveness and replay results.
+
+## Directional navigation, live sources and labels
+
+The next revision passes 14 app tests and TypeScript. New cases exercise
+repeated diagonal strokes separated by pauses, reversal/expiry, local next-level
+prediction, OSM's four-tile same-level cap, the ZL chord without camera panning,
+source restoration and delayed bookmark receipts routed to their original map.
+Marker tests cover zoom/category filtering, reply limits and invalid windows.
+Ten framework tile tests and framework TypeScript pass, including equivalent
+30/60 Hz directional histories and camera zoom-target exposure.
+
+The compiled guest passes 20 Hyrule replay checks across 1,713 frames and all
+27 geographic checks across 1,591 frames. New replay coverage uses actual lower
+surface hit testing for repeated strokes and source switching, ZL zoom/rail
+mounting, next-level demand, real indexed labels and category selection. The
+OSM provider used during switching is synthetic: no public-service stress scan
+runs. Maxima remain three pending requests, 40 tile entries and three staging
+tickets. Hyrule made zero HTTP downloads; the synthetic OSM adapter served eight
+tile fetches. All staging tickets drained.
+
+QuickJS passes 1,272 frames per startup provider at a 128 KiB stack, including
+marker components, ZL, source/filter panels and switching both ways. The native
+package includes all nine annotation icons, with the correct power-of-two
+image envelopes. Wasm captures were visually checked for the labels, zoom rail,
+source picker and category picker. Native build and readback do not substitute
+for physical gesture or frame-time acceptance of this revision.
+
+The navigation build was uploaded and read back equal: 1,720,504 bytes; SHA-256
+`348e614c1016fceb175d701bd3ae14294f817367f326d13493473488e16a1e2a`.
+The Mac daemon now exposes both maps through source-identified requests.

@@ -29,6 +29,7 @@ bounded requests and replies; they do not execute these capabilities.
 | Places per search | 5 |
 | Saved places | 1,000 on Mac; four five-place pages cached on device |
 | Saved-place name | 36 UTF-16 code units |
+| Marker resource cache | 12 windows; at most four demanded, 12 records per window |
 | Query text | 80 UTF-16 code units |
 | Unicode label collection | 5 × 256×32 images |
 | Mac concurrent tile decodes | 3 |
@@ -47,9 +48,12 @@ and 2,500-code-unit payload limits.
 ## One tile's lifecycle
 
 1. The camera's viewport produces near-first tile coordinates. Hyrule adds up
-   to 12 neighbors using a 256px margin and at most 384px directional lead; OSM
-   adds at most four, with a 128px margin and lead cap. Prediction uses the latest
-   displacement over 48 local-atlas frames or 36 geographic-map frames. Visible
+   to 12 neighbors using a 256px margin and at most 512px directional lead; OSM
+   adds at most four, with a 128px margin and lead cap. Prediction accumulates camera travel across gestures in constant space. A
+   settled direction chooses a forward corridor. Three idle seconds preserve
+   direction, followed by confidence decay. Sustained turns replace old intent.
+   Hyrule also prepares at most six next-level tiles for five seconds after a
+   zoom-in input, sharing the 12-extra-tile budget. Visible
    entries are pinned; extras have lower priority and are unpinned. Hyrule clips
    both axes; OSM wraps longitude and clips polar rows. Addresses include the
    provider source identity.
@@ -171,3 +175,29 @@ is no GPS, turn-by-turn routing or satellite layer. The optional geographic
 provider has no area downloader, and public services have no availability
 guarantee. Network isolation and bounded work do not establish a hardware
 frame-time guarantee.
+
+## Source selection and annotation resources
+
+**Each request identifies its source.** `map.info({ kind })` returns the selected
+metadata and the installed-source catalog. The worker routes tile/search and
+bookmark calls by source identity rather than mutating a connection-wide active
+provider. Delayed commands and retries therefore retain their original SQLite
+database. Old guests that omit a source use the configured startup provider.
+
+The guest suspends new resource starts while source metadata is requested. It
+keeps old pixels visible until metadata succeeds, then cancels old demand,
+clears source-dependent collections and restores that map's remembered camera.
+Source changes are unavailable during bookmark naming or mutation confirmation.
+
+The marker index uses SQLite R-tree queries on the Mac. Requests address fixed
+512px annotation windows at an integer level and a category filter. Each reply
+has at most 12 records; four windows cover the viewport. The host bounds query
+candidates to 256 and chooses one marker per density grid slot. Region, travel,
+enemy and collectible visibility use different zoom ranges. This reduces
+clutter; it is not a full cross-window label-collision solver.
+
+Annotation responses share resource scheduling with terrain but have separate
+cache costs and view ownership. Names and category icons are drawn locally at
+constant screen size; only their transforms change during motion. No bitmap is
+requested for every label or every frame. Icon assets are compiled into the
+package. An annotation cache failure leaves terrain navigation available.
