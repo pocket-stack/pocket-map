@@ -2,12 +2,16 @@ import { Database } from "bun:sqlite";
 import { inflateRawSync } from "node:zlib";
 import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
+import { validAtlas, atlasPackName } from "../shared/atlas.ts";
+import { ATLAS_KINDS, type AtlasKind } from "../shared/types.ts";
+const kind = (process.argv.find(a => a.startsWith("--map="))?.slice(6) ?? "hyrule") as AtlasKind;
+if (!ATLAS_KINDS.includes(kind)) throw Error("Use --map=hyrule or --map=oot");
 const root = resolve(import.meta.dir, ".."),
   runtime = resolve(process.env.POCKETJS_RUNTIME ?? resolve(root, "runtime"));
 const { createResourcePack, prepareTiledRGB565 } = await import(
   `${runtime}/tools/resource-pack.ts`
 );
-const db = new Database(resolve(root, ".local/hyrule/atlas.sqlite"), {
+const db = new Database(resolve(root, `.local/${kind}/atlas.sqlite`), {
   readonly: true,
 });
 const manifest = JSON.parse(
@@ -17,25 +21,18 @@ const manifest = JSON.parse(
     }
   ).value,
 );
-if (
-  manifest.format !== "pocket-map-atlas-rgb565-v1" ||
-  manifest.tiles !== 21845 ||
-  !/^[a-f0-9]{16}$/.test(manifest.info?.source ?? "") ||
-  manifest.info.space !== "planar" ||
-  manifest.info.minZoom !== 0 ||
-  manifest.info.maxZoom !== 7
-) {
+if (!validAtlas(manifest)) {
   db.close();
-  throw Error("Unsupported Hyrule atlas");
+  throw Error("Unsupported local atlas");
 }
-const out = resolve(root, ".local/3ds");
+const out = resolve(root, kind === "hyrule" ? ".local/3ds" : `.local/3ds/${kind}`);
 mkdirSync(out, { recursive: true });
-const name = `hyrule-${manifest.info.source}-v1`,
-  pack = createResourcePack(resolve(out, `${name}.prp`), 21846);
+const name = atlasPackName(kind, manifest.info.source),
+  pack = createResourcePack(resolve(out, `${name}.prp`), manifest.tiles + 1);
 try {
   pack.add(Buffer.from(JSON.stringify(manifest)));
   const query = db.query("SELECT pixels FROM tiles WHERE z=? AND x=? AND y=?");
-  for (let z = 0; z <= 7; z++) {
+  for (let z = 0; z <= manifest.info.maxZoom; z++) {
     for (let y = 0; y < 2 ** z; y++)
       for (let x = 0; x < 2 ** z; x++) {
         const row = query.get(z, x, y) as { pixels: Uint8Array } | null;
@@ -50,8 +47,8 @@ try {
       }
     console.log(`SD atlas level ${z} complete`);
   }
-  const receipt = { ...pack.finish(), name, source: manifest.info.source };
-  const bootstrap = createResourcePack(resolve(out, "hyrule.prp"), 1);
+  const receipt = { ...pack.finish(), kind, name, source: manifest.info.source };
+  const bootstrap = createResourcePack(resolve(out, `${kind}.prp`), 1);
   try {
     bootstrap.add(Buffer.from(JSON.stringify(manifest)));
     bootstrap.finish();

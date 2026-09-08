@@ -3,15 +3,18 @@ import argparse, ftplib, hashlib, json, pathlib, re, time
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('host', nargs='?', default='192.168.8.102')
+parser.add_argument('--map', choices=['hyrule', 'oot'], default='hyrule', dest='kind')
 parser.add_argument('--restart', action='store_true',
                     help='Upload a new temporary copy from byte zero after a readback mismatch')
 args = parser.parse_args()
 
 root = pathlib.Path(__file__).resolve().parent.parent
-meta = json.loads((root / '.local/3ds/manifest.json').read_text())
-if not isinstance(meta.get('name'), str) or not re.fullmatch(r'hyrule-[a-f0-9]{16}-v1', meta['name']):
+pack_dir = root / '.local/3ds' / ('' if args.kind == 'hyrule' else args.kind)
+meta = json.loads((pack_dir / 'manifest.json').read_text())
+if not isinstance(meta.get('name'), str) or not re.fullmatch(args.kind + r'-[a-f0-9]{16}-v1', meta['name']):
     raise ValueError('Invalid atlas identity')
-local = root / '.local/3ds' / (meta['name'] + '.prp')
+local = pack_dir / (meta['name'] + '.prp')
+receipt_prefix = 'sd' if args.kind == 'hyrule' else 'sd-' + args.kind
 slot = hashlib.sha256(json.loads((root / 'pocket.json').read_text())['id'].encode()).hexdigest()[:16]
 base = '/pocketjs/assets/' + slot
 remote = base + '/' + local.name
@@ -83,24 +86,25 @@ verification = dict(path=target, bytes=progress[0], expectedBytes=local.stat().s
                     sha256=digest.hexdigest(), expectedSha256=expected,
                     firstDifference=first_difference)
 (root / 'dist/qa').mkdir(parents=True, exist_ok=True)
-(root / 'dist/qa/sd-verify.json').write_text(json.dumps(verification, indent=2))
+(root / ('dist/qa/' + receipt_prefix + '-verify.json')).write_text(json.dumps(verification, indent=2))
 if progress[0] != local.stat().st_size or digest.hexdigest() != expected:
     ftp.close()
     raise RuntimeError('Atlas readback differs; rerun with --restart: ' + json.dumps(verification))
 if not installed:
     ftp.rename(partial, remote)
 # The small bootstrap pointer becomes visible only after its complete atlas.
-bootstrap = root / '.local/3ds/hyrule.prp'
+bootstrap = pack_dir / (args.kind + '.prp')
+bootstrap_remote = base + '/' + args.kind + '.prp'
 data = bootstrap.read_bytes()
 with bootstrap.open('rb') as source:
-    ftp.storbinary('STOR ' + base + '/hyrule.prp.partial', source)
+    ftp.storbinary('STOR ' + bootstrap_remote + '.partial', source)
 actual = bytearray()
-ftp.retrbinary('RETR ' + base + '/hyrule.prp.partial', actual.extend)
+ftp.retrbinary('RETR ' + bootstrap_remote + '.partial', actual.extend)
 assert actual == data, 'Bootstrap readback differs'
-ftp.rename(base + '/hyrule.prp.partial', base + '/hyrule.prp')
+ftp.rename(bootstrap_remote + '.partial', bootstrap_remote)
 ftp.quit()
 receipt = dict(path=remote, bytes=local.stat().st_size, sha256=expected,
                verified=True, seconds=time.monotonic()-started)
 (root / 'dist/qa').mkdir(parents=True, exist_ok=True)
-(root / 'dist/qa/sd-install.json').write_text(json.dumps(receipt, indent=2))
+(root / ('dist/qa/' + receipt_prefix + '-install.json')).write_text(json.dumps(receipt, indent=2))
 print(json.dumps(receipt), flush=True)

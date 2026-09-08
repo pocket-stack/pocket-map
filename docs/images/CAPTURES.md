@@ -47,6 +47,23 @@ after its `done` marker appears. The capture session used a separate SD director
 and restored the existing emulator configuration afterwards. Raw frames, keys,
 downloaded tiles and working caches stay ignored.
 
+## Ocarina of Time, 2026-09-08
+
+`oot-hyrule-field-3ds.png` uses the same native Azahar/Vulkan capture path,
+production UI, unscaled screen composition and frame-600 readback described
+above. The separate emulator SD directory contains only `oot.prp` and its
+prepared terrain pack. **No Mac provider runs for this capture.** The native SD
+worker opens the bootstrap after the missing Hyrule probe, loads RGB565
+textures, and displays Hyrule Field at the atlas's default camera. Dynamic
+labels are absent because they require the Mac provider.
+
+[oot-capture.json](oot-capture.json) records source and runtime revisions,
+binary and pack hashes, camera coordinates, raw framebuffer hashes and the
+published PNG hash. This proves native emulator startup and SD rendering;
+it is not a physical-controller test or performance measurement. Use the
+same build command with `.local/native-oot/guest` as its output directory and
+install the OoT files under the emulator's `pocketjs/assets/c7771f0167312c63/`.
+
 ## Other images
 
 - `psp-map.png`, `psp-keyboard.png` and `psp-hyrule.png` are earlier physical PSP

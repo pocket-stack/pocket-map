@@ -132,9 +132,9 @@ function Deck(p: { s: MapModel }) {
     <View class="absolute left-0 top-0 w-full h-[38] bg-gradient-to-b from-[#eef3f9] to-[#b5c5d8]" />
     {search}
     <View class="absolute left-[72] top-[6] w-[242] h-[28] rounded-[5] border border-[#91a3ba] bg-white overflow-hidden" style={{ display: typing() || results() ? 0 : 1 }}>
-      <Text class="absolute left-[7] top-[7] text-xs text-[#354d67]">{typing() ? `${(naming() ? p.s.saved.name() : p.s.query()).slice(-31)}|` : saved() ? "Saved on your paired Mac" : results() ? p.s.query().slice(0, 32) : p.s.localMapAvailable() && !p.s.online() ? "Hyrule on SD - Mac for search & saves" : p.s.online() ? p.s.planar() ? "Hyrule - Breath of the Wild" : "Explore with your Nintendo 3DS" : "Waiting for paired Mac"}</Text>
+      <Text class="absolute left-[7] top-[7] text-xs text-[#354d67]">{typing() ? `${(naming() ? p.s.saved.name() : p.s.query()).slice(-31)}|` : saved() ? "Saved on your paired Mac" : results() ? p.s.query().slice(0, 32) : p.s.localMapAvailable() && !p.s.online() ? "Map on SD - Mac for search & saves" : p.s.online() ? p.s.planar() ? p.s.mapName() : "Explore with your Nintendo 3DS" : "Waiting for paired Mac"}</Text>
     </View>
-    <ClassicButton debugName="MapSourceButton" label={p.s.switching() ? "Opening map..." : `Map: ${p.s.planar() ? "Hyrule" : "OpenStreetMap"}`} surface="auxiliary" style={{ ...box(72, 6, 242, 28), display: typing() || results() ? 1 : 0 }} disabled={blocked() || !p.s.maps().length} onPress={p.s.openSources} />
+    <ClassicButton debugName="MapSourceButton" label={p.s.switching() ? "Opening map..." : `Map: ${p.s.mapName()}`} surface="auxiliary" style={{ ...box(72, 6, 242, 28), display: typing() || results() ? 1 : 0 }} disabled={blocked() || !p.s.maps().length} onPress={p.s.openSources} />
     <Show when={p.s.choosing()}><View style={box(6, 40, 308, 194)}>
       <For each={p.s.choices()}>{(name, i) => <ClassicButton label={name} surface="auxiliary" tone={p.s.selection() === i() ? "primary" : undefined} style={box(0, i() * 30, 308, 27)} onPress={() => p.s.choose(i())} />}</For>
       <ClassicButton label="Back to map" surface="auxiliary" style={box(0, 160, 308, 34)} onPress={p.s.dismiss} />
@@ -151,7 +151,7 @@ export default function MapApp() {
     hot.text(zoomText, `z${v.zoom.toFixed(1)}`);
     if (pin) { const pos = worldPosition(pin); let dx = pos.x - v.x; if (!s.planar()) dx -= Math.round(dx / 256) * 256;
       hot.prop(marker, "translateX", 200 + dx * v.scale - 8); hot.prop(marker, "translateY", 120 + (pos.y - v.y) * v.scale - 22); }
-    const scale = s.planar() ? { pixels: 64, label: `${Math.round(64 / v.scale * 24000 / 256)} u` } : scaleBar(unproject(v.x, v.y).lat, v.zoom);
+    const scale = s.planar() ? { pixels: 64, label: `${Math.round(64 / v.scale * (s.info()?.worldUnits ?? 24000) / 256)} u` } : scaleBar(unproject(v.x, v.y).lat, v.zoom);
     hot.prop(bar, "scaleX", scale.pixels / 70); hot.text(scaleText, scale.label);
   });
   const deck = <Deck s={s} />;
@@ -180,7 +180,7 @@ export default function MapApp() {
     <SearchResults s={s} />
     <Show when={s.mode() === "about"}><ClassicPanel active style={box(24, 35, 352, 175)}>
       <Text class="absolute left-0 right-0 top-[7] text-xs text-center text-white font-bold">Pocket Map</Text>
-      <Text class="absolute left-[14] top-[37] text-xs text-[#354d67]">{`Stylus / Circle Pad / D-pad: pan\n+ and -: zoom around the map center\nY: search   X: return to selected place\nHold L: places   Hold R: map controls\nHold ZL + Up/Down: zoom level\n\n${s.planar() ? "Hyrule: Breath of the Wild\nMap art: Nintendo | Data: Zelda Dungeon\nMap and place search stored on your Mac" : "Maps: OpenStreetMap contributors\nosm.org/copyright | Tiles: OSM DE\nPlace search: Photon by komoot"}`}</Text>
+      <Text class="absolute left-[14] top-[37] text-xs text-[#354d67]">{`Stylus / Circle Pad / D-pad: pan\n+ and -: zoom around the map center\nY: search   X: return to selected place\nHold L: places   Hold R: map controls\nHold ZL + Up/Down: zoom level\n\n${s.planar() ? `${s.info()?.name}\n${s.info()?.attribution}\nSD terrain / Mac search and saved places` : "Maps: OpenStreetMap contributors\nosm.org/copyright | Tiles: OSM DE\nPlace search: Photon by komoot"}`}</Text>
     </ClassicPanel></Show>
     <ChoicePanel s={s} /><Context s={s} /><ZoomRail s={s} />
     <View class="absolute right-0 bottom-0 h-[15] bg-[#ffffffee]" style={{ width: 235 }}><Text class="absolute right-[3] top-[1] text-xs text-[#35434b]">{s.info()?.attribution ?? "Map data"}</Text></View>
