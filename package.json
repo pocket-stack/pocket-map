@@ -18,7 +18,8 @@
     "host:psp": "bun host/serve-usb.ts",
     "test:psp:watch": "bun scripts/watch-psp-smoke.ts",
     "prepare:sd": "bun scripts/prepare-sd.ts",
-    "deploy:sd": "python3 scripts/deploy-sd.py"
+    "deploy:sd": "python3 scripts/deploy-sd.py",
+    "update": "bun scripts/update.ts"
   },
   "dependencies": {
     "@mapbox/vector-tile": "3.0.0",

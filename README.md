@@ -57,13 +57,41 @@ Exit ftpd and open **Pocket Map** in HBL. The deployment script installs only th
 
 ### Updating this build
 
-**The current `POCKETJS_OFFLOAD` native build excludes the development server
-and package storage path.** PocketJS's ordinary 3DS runtime supports guest
-updates on port 8131, but that connection is unavailable in this build, even
-with a valid development key. Rebuild with `bun run 3ds`, deploy through ftpd,
-and restart Pocket Map for guest or native changes. Mac-only provider changes
-need only a daemon restart. The offload UI path omits synchronous SD package
-work; enabling safe development updates here needs native host integration.
+**This build supports runtime guest updates on port 8131 alongside offload and
+SD map reads.** Install the updated `.3dsx` once with `bun run 3ds` and
+`bun run deploy <3ds-ip>`. While ftpd is open, import the console's development
+pairing key into this checkout (the existing device key is preserved):
+
+```sh
+bun runtime/tools/3ds-dev.ts pair --host <3ds-ip> --ftp-port 5000
+```
+
+Exit ftpd and open Pocket Map. Subsequent JS and baked UI asset changes use:
+
+```sh
+bun run update                 # rebuild .pocket and discover the paired runtime
+bun run update 192.168.8.102    # explicit IP when broadcast discovery is unavailable
+bun runtime/tools/3ds-dev.ts probe --host 192.168.8.102 --out dist/qa/runtime.png
+```
+
+`L + R + SELECT` opens the native runtime menu. `X` requests a screenshot from
+an attached client; `B` closes the menu. `L + R + X` checks an SD-staged
+`pending.pocket`. The map's offload pairing and the runtime's device-wide
+development pairing are separate keys.
+
+**A native worker performs transfer, SD writes, hashing, admission and durable
+commit.** The existing map keeps rendering during upload. At a GPU-idle
+boundary, the runtime restarts JS and the UI tree, fences old offload/SD
+requests and releases their GPU resources. It accepts the package only after
+its first GPU frame retires and its generation is committed. Rejected packages
+restore the previous guest; saved places and prepared terrain packs persist.
+The current map position and other in-memory UI state restart with the guest.
+
+**Guest updates are limited to 8 MiB and the embedded app's exact native plan.**
+Native runtime, capability, font configuration, screen configuration or plan
+changes require another `.3dsx` deployment. Terrain `.prp` updates still use
+`deploy:sd`; they do not need to be retransferred for UI changes. Mac-only
+provider changes need only a daemon restart.
 
 For request timing and socket backpressure diagnostics, start the host with
 `POCKET_MAP_TRACE=1 bun run host <3ds-ip>`. It records request IDs, method names,

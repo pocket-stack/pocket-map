@@ -7,7 +7,8 @@ const plan = resolve3dsBuildPlan(await Bun.file(resolve(root, "pocket.json")).js
 mkdirSync(resolve(root, "dist"), { recursive: true });
 const path = resolve(root, "dist/plan.json"); writeFileSync(path, JSON.stringify(plan, null, 2));
 await build3ds([`--plan=${path}`, `--project-root=${root}`, ...process.argv.slice(2)]);
-for (const ext of ["3dsx", "pocket", "cia"]) {
+// A guest-only build must never copy a stale native binary over dist.
+for (const ext of process.argv.includes("--pocket-only") ? ["pocket"] : ["3dsx", "pocket", "cia"]) {
   const from = resolve(root, `runtime/dist/3ds/pocketmap-main.${ext}`);
   if (existsSync(from)) copyFileSync(from, resolve(root, `dist/pocketmap-main.${ext}`));
 }
