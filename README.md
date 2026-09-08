@@ -1,6 +1,6 @@
 # Pocket Map
 
-A map browser for Nintendo 3DS and PSP, built with [PocketJS](https://github.com/pocket-stack/pocketjs) and SolidJS 1.9. Browse **OSM vector maps** or the complete Hyrule map from **The Legend of Zelda: Breath of the Wild**. Pan with the resistive touchpad, zoom, search and save places on the paired Mac.
+A map browser for Nintendo 3DS and PSP, built with [PocketJS](https://github.com/pocket-stack/pocketjs) and SolidJS 1.9. Browse **OSM vector maps**, Hyrule from **Breath of the Wild**, or the region and dungeon atlas from **Ocarina of Time**. Pan with the resistive touchpad, zoom, search and save places on the paired Mac.
 
 The Mac fetches OSM vector tiles, prepares bounded geometry and streams it to the 3DS GPU drawing path. Four real San Francisco tiles used **79.5% fewer terrain bytes** than the previous raw bitmap path; z14 geometry is reused through display z18. Hyrule retains its complete local raster atlas and 2,576 searchable places, with no internet requests while browsing. See [vector architecture, measurements and limits](docs/VECTOR_MAP.md).
 
@@ -20,6 +20,15 @@ stacked without scaling. They are emulator captures, not console photographs.
 OSM map data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright), served as Shortbread vectors by VersaTiles.
 
 Map artwork belongs to Nintendo; the pinned atlas and marker source is [Zelda Dungeon's map repository](https://github.com/zeldadungeon/maps/tree/d32a85656031d861cef38e32eb927a7d08a983a9/public/botw). Downloaded assets and generated databases stay outside Git.
+
+### Ocarina of Time
+
+The third source uses [Ecksters' OoT Interactive Map](https://github.com/Ecksters/OoT-Interactive-Map/tree/020dab1b787bc18d1990653817765a1024bad43d), with Nintendo map artwork assembled by Peardian. It includes **456 searchable regions and rooms** and a complete **21,845-tile pyramid at levels 0–7**. Both Zelda maps can use prepared SD textures and retain independent camera positions and Mac bookmarks. [Prepare and install Ocarina of Time](docs/OCARINA.md).
+
+![Ocarina of Time, Hyrule Field — native 3DS build in Azahar reading prepared SD textures without a paired Mac](docs/images/oot-hyrule-field-3ds.png)
+
+This native Azahar capture reads the installed OoT pack through the 3DS SD
+worker with **no paired Mac**. [Capture provenance](docs/images/CAPTURES.md#ocarina-of-time-2026-09-08).
 
 ## PSP over USB
 
@@ -74,7 +83,7 @@ queue; it is not a device-render receipt.
 | Hold L | Search, saved places, save map center, return to pin, or map home |
 | Hold R | Zoom, label categories, switch map, clear pin, retry, or controls |
 | Hold ZL + D-pad up/down | Open the vertical zoom rail; tap or hold to change levels |
-| Map name on the lower screen | Switch Hyrule / OSM without restarting |
+| Map name on the lower screen | Switch OSM / Hyrule / Ocarina of Time without restarting |
 | Save view / Save place | Name and save the center or selected search result on the Mac |
 | Saved | Browse, rename, delete with confirmation, or return to a saved location |
 | Saved page: Prev / Next or D-pad left/right | Turn five-place pages |

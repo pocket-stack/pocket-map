@@ -1,0 +1,35 @@
+{
+  "renderer": "Azahar 2125.1.2 / native 3DS / Vulkan / 1x",
+  "entry": "app/main.tsx",
+  "runtime": "e2226e8f69990dd8361d79aabf47bcbedc44786d",
+  "frame": 600,
+  "pairedMac": false,
+  "storage": "3DS SD worker reading prepared OoT pack",
+  "sourceRevision": "020dab1b787bc18d1990653817765a1024bad43d/childAngled/v1",
+  "camera": {
+    "id": "o_s81",
+    "name": "Hyrule Field",
+    "detail": "Ocarina of Time - Region",
+    "space": "planar",
+    "x": 93.89738121360871,
+    "y": 75.53183042343353,
+    "zoom": 4
+  },
+  "nativeBinarySHA256": "24f8893a0290d6fd5afb96cb4089dce91c54446d2af5b8f2ebac13b497d5d9c8",
+  "resourcePackSHA256": "4e861d021a961bc8da38c5e394f7c8341807620c6faef27c3d61aa8c1cea5232",
+  "rawFrames": [
+    {
+      "name": "aux-f0600.raw",
+      "bytes": 307200,
+      "sha256": "bdc9724e718bb1dfb9dba19c6e2fc3ad049b41e4e90f032c269ad0c0c8557c08"
+    },
+    {
+      "name": "f0600.raw",
+      "bytes": 384000,
+      "sha256": "164d9ca7895b720e872cf05e27559a039fc5e83d017918a83b84c1e2fc21ee10"
+    }
+  ],
+  "image": "oot-hyrule-field-3ds.png",
+  "pngSHA256": "1cca03408fccf9cfa2acca592b9fff88c370463eba018f73055ef416845f3545",
+  "physicalInteraction": "Not measured by this capture"
+}

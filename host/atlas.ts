@@ -8,9 +8,9 @@ import { Bookmarks } from "./bookmarks.ts";
 import { renderLabel } from "./provider.ts";
 import { validPosition, type MapInfo, type Place, type SearchInput, type TileInput, type MarkerInput } from "../shared/types.ts";
 
-import { ATLAS_FORMAT } from "./atlas-format.ts";
+import { validAtlas } from "../shared/atlas.ts";
 export { HYRULE_REVISION, ATLAS_FORMAT } from "./atlas-format.ts";
-export interface AtlasManifest { format: string; revision: string; tiles: number; places: number; info: MapInfo }
+export type { AtlasManifest } from "../shared/atlas.ts";
 
 /** The installed atlas is complete and immutable. Reads never fall through to
  * a network provider; user bookmarks live in a different SQLite database. */
@@ -25,9 +25,9 @@ export class AtlasProvider {
   constructor(directory: string) {
     this.db = new Database(join(directory, "atlas.sqlite"), { readonly: true });
     const row = this.db.query("SELECT value FROM metadata WHERE key='manifest'").get() as { value: string } | null;
-    const manifest: AtlasManifest | undefined = row ? JSON.parse(row.value) : undefined;
-    if (!manifest || manifest.format !== ATLAS_FORMAT || manifest.tiles !== 21845 || manifest.info.space !== "planar") {
-      this.db.close(); throw new Error("Incomplete Hyrule atlas; run bun run prepare:hyrule");
+    const manifest = row ? JSON.parse(row.value) : undefined;
+    if (!validAtlas(manifest)) {
+      this.db.close(); throw new Error("Incomplete or unsupported local atlas");
     }
     if (existsSync(join(directory, "markers.sqlite"))) this.markers = new MarkerIndex(join(directory, "markers.sqlite"));
     this.info = { ...manifest.info, markers: !!this.markers };
@@ -44,7 +44,7 @@ export class AtlasProvider {
   }; }
   tile(input: TileInput): OffloadImage {
     const { source, z, x, y } = input;
-    if (source !== this.info.source || ![z, x, y].every(Number.isInteger) || z < 0 || z > 7 || x < 0 || y < 0 || x >= 2 ** z || y >= 2 ** z) throw new Error("Invalid atlas tile");
+    if (source !== this.info.source || ![z, x, y].every(Number.isInteger) || z < 0 || z > this.info.maxZoom || x < 0 || y < 0 || x >= 2 ** z || y >= 2 ** z) throw new Error("Invalid atlas tile");
     const key = `${z}/${x}/${y}`, hit = this.images.get(key);
     if (hit) { this.hits++; this.images.delete(key); this.images.set(key, hit); return hit; }
     const row = this.db.query("SELECT pixels FROM tiles WHERE z=? AND x=? AND y=?").get(z, x, y) as { pixels: Uint8Array } | null;

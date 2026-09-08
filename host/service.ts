@@ -4,7 +4,7 @@ import { MapProvider } from "./provider.ts";
 import { AtlasProvider } from "./atlas.ts";
 import type { ProviderConfig } from "./config.ts";
 import type { NetworkFetch } from "./cache.ts";
-import type { MapKind } from "../shared/types.ts";
+import { ATLAS_KINDS, type MapKind } from "../shared/types.ts";
 
 /** Selection is in each request, never mutable connection-wide state. Old
  * reads and lost command acknowledgements cannot cross databases on a switch. */
@@ -13,9 +13,12 @@ export class MapService {
   private selected: MapKind;
   constructor(config: ProviderConfig, network?: NetworkFetch) {
     this.providers.set("osm", new MapProvider(config, network));
-    if (config.atlas && existsSync(join(config.atlas, "atlas.sqlite"))) this.providers.set("hyrule", new AtlasProvider(config.atlas));
+    for (const kind of ATLAS_KINDS) {
+      const directory = config.atlases?.[kind] ?? (kind === "hyrule" ? config.atlas : undefined);
+      if (directory && existsSync(join(directory, "atlas.sqlite"))) this.providers.set(kind, new AtlasProvider(directory));
+    }
     this.selected = config.kind ?? "osm";
-    if (!this.providers.has(this.selected)) throw new Error("Prepare the Hyrule atlas first");
+    if (!this.providers.has(this.selected)) { this.close(); throw new Error(`Run bun run prepare:${this.selected} first`); }
   }
   private resolve(source?: string) {
     if (source === undefined) return this.providers.get(this.selected)!; // Existing guest compatibility.

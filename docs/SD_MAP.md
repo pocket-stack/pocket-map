@@ -1,5 +1,9 @@
 # Hyrule on the 3DS SD card
 
+[Ocarina of Time](OCARINA.md) uses the same SD worker and installer with
+`--map=oot` during preparation and `--map oot` during deployment. Its bootstrap
+and terrain filenames are separate, so both atlases can remain installed.
+
 The optional SD pack stores the complete Hyrule terrain atlas on the console.
 **Panning and zooming can load new terrain without a paired Mac**, including
 at startup. OSM vectors, place search, bookmarks and dynamic marker labels
@@ -15,7 +19,8 @@ bun run deploy 192.168.8.102
 ```
 
 Exit ftpd and open Pocket Map. The SD bootstrap opens Hyrule directly; the Mac
-connection adds search, saved places and the source chooser. The normal
+connection adds search and saved places. The source chooser also lists other
+installed SD atlases while offline. The normal
 `bun run host` command remains unchanged. A missing local image can fall back
 to the paired Mac. Without an installed pack, the original host path remains
 available. No downloaded artwork, SQLite database or generated pack is committed.

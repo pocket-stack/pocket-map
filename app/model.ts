@@ -9,7 +9,8 @@ import { BTN } from "@pocketjs/framework/input";
 import { inputDeltaSeconds, simulationHz, virtualNow } from "@pocketjs/framework/clock";
 import { project, worldPosition, positionAt } from "./geo.ts";
 import { createSavedPlaces, validPlaces, type MapMode } from "./saved.ts";
-import { HOME, type TileInput, type MapInfo, type SearchInput, type Place, type MapKind } from "../shared/types.ts";
+import { HOME, MAP_KINDS, MAP_NAMES, ATLAS_KINDS, type AtlasKind, type TileInput, type MapInfo, type SearchInput, type Place, type MapKind } from "../shared/types.ts";
+import { validAtlas, atlasPackName } from "../shared/atlas.ts";
 
 import { createMapPrediction } from "./prediction.ts";
 import { createAnnotations, LAYERS } from "./annotations.ts";
@@ -45,12 +46,13 @@ export function createMap(io = offload(), viewport = { width: 400, height: 240 }
   const packs = resourcePacks();
   const [useLocalTiles, setUseLocalTiles] = createSignal(true);
   const [localSource, setLocalSource] = createSignal<string>();
+  const [installed, setInstalled] = createSignal<Partial<Record<AtlasKind, MapInfo>>>({});
   const localMapAvailable = () => !!packs?.connected() && planar() && useLocalTiles() && localSource() === info()?.source;
   const [tileStorage, setTileStorage] = createSignal<"local" | "desktop">("desktop");
   const camera = createTileCamera({ ...viewport, x: p.x, y: p.y, zoom: HOME.zoom, minZoom: 1, maxZoom: 18, bounds: { width: 256, height: 256, wrapX: true } });
   const runtime = createResourceRuntime({ maxConcurrent: 3, startsPerFrame: 1, completionsPerFrame: 1, maxCollections: 6, available: () => !switching() && !!info() && (io.connected() || !!packs && planar()) });
   const rasterTiles = createPackedImageCollection<TileInput>(runtime, { key: i => `${i.source}/${i.z}/${i.x}/${i.y}`,
-    pack: i => useLocalTiles() && planar() ? { name: `hyrule-${i.source}-v1`, entry: 1 + (4 ** i.z - 1) / 3 + i.y * 2 ** i.z + i.x } : undefined,
+    pack: i => useLocalTiles() && planar() ? { name: info()?.pack ?? atlasPackName(info()?.kind === "oot" ? "oot" : "hyrule", i.source), entry: 1 + (4 ** i.z - 1) / 3 + i.y * 2 ** i.z + i.x } : undefined,
     fallback: { client: reads, method: "map.tile", payload: JSON.stringify }, materialized: storage => { setTileStorage(storage); if (storage === "local") setLocalSource(info()?.source); },
     width: 256, height: 256, maxEntries: tileEntries, maxViews: 2, maxDemandsPerView: 24, retry: { attempts: 3, delayFrames: 90, maxDelayFrames: 360 } });
   const vector = () => info()?.render === "mesh";
@@ -86,8 +88,12 @@ export function createMap(io = offload(), viewport = { width: 400, height: 240 }
   const selectedIndex = () => mode() === "saved" ? saved.selection() : selection();
   function select(index: number) { const n = Math.max(0, Math.min(rows().length - 1, index)); if (mode() === "saved") saved.setSelection(n); else setSelection(n); }
   prediction.reset(camera.view());
-  const maps = () => info()?.maps ?? [];
-  const labelLayers = () => vector() ? [LAYERS[0],LAYERS[4]] : LAYERS;
+  const maps = createMemo(() => {
+    const catalog = [...(info()?.maps ?? [])];
+    for (const kind of ATLAS_KINDS) { const local = installed()[kind]; if (local && !catalog.some(m => m.kind === kind)) catalog.push({ kind, name: local.name }); }
+    return catalog;
+  });
+  const labelLayers = () => vector() ? [LAYERS[0],LAYERS[4]] : info()?.kind === "oot" ? [LAYERS[0], { id: "travel" as const, name: "Regions & dungeon rooms" }, LAYERS[4]] : LAYERS;
   const choices = () => mode() === "sources" ? maps().map(m => m.name) : labelLayers().map(l => l.name);
   const choosing = () => mode() === "sources" || mode() === "layers";
   function openSources() { if (saved.busy() || saved.modal() || typing() || switching()) return; camera.stop(); setSourceError(""); setMode("sources"); setSelection(Math.max(0, maps().findIndex(m => m.kind === info()?.kind))); setMenu(undefined); }
@@ -98,13 +104,17 @@ export function createMap(io = offload(), viewport = { width: 400, height: 240 }
   function switchMap(kind: MapKind) {
     if (saved.busy() || saved.modal() || typing() || switching()) return;
     if (kind === info()?.kind) { dismiss(); return; }
+    const local = kind === "osm" ? undefined : installed()[kind];
+    if (!io.connected() && !local) { setSourceError("Connect your Mac to open this map."); setMode("sources"); return; }
     const old = info(); if (old?.kind) remembered.set(old.kind, { ...camera.view(), pin: pin() });
     camera.stop(); if (infoRequest) io.cancel(infoRequest); infoRequest = 0;
-    setSourceError(""); setRequestedKind(kind); setSwitching(true); retryAt = 0; setMode("map"); setStatus(`Opening ${kind === "hyrule" ? "Hyrule" : "OpenStreetMap"}...`);
+    setSourceError(""); setRequestedKind(kind); setSwitching(true); retryAt = 0; setMode("map"); setStatus(`Opening ${MAP_NAMES[kind]}...`);
+    if (local) { installInfo({ ...local, markers: false, maps: info()?.maps }); setLocalSource(local.source); }
   }
   let frame = 0, previousSession = 0, infoRequest = 0, retryAt = 0, shiftAt = -10, levelAge = 0, candidateLevel = HOME.zoom;
   let confirmed = false;
   let bootstrap = packs ? 0 : -1;
+  let bootstrapIndex = 0;
   onCleanup(() => { if (bootstrap > 0) packs?.cancel(bootstrap); });
   function installInfo(value: MapInfo) {
     if (typeof value.source !== "string" || !/^[a-f0-9]{16}$/.test(value.source) || typeof value.name !== "string" || typeof value.attribution !== "string" || !Number.isInteger(value.maxZoom) || value.maxZoom < 1 || value.maxZoom > 18
@@ -113,7 +123,11 @@ export function createMap(io = offload(), viewport = { width: 400, height: 240 }
       || value.render === "mesh" && (!Number.isInteger(value.dataZoom) || value.dataZoom! < 0 || value.dataZoom! > value.maxZoom)
       || value.space !== undefined && value.space !== "mercator" && value.space !== "planar"
       || value.home !== undefined && (!validPlaces([value.home]) || (value.home.space === "planar") !== (value.space === "planar"))) throw new Error("Invalid map provider");
-    if (value.maps !== undefined && (!Array.isArray(value.maps) || value.maps.length > 2 || !value.maps.every(m => (m.kind === "hyrule" || m.kind === "osm") && typeof m.name === "string" && m.name.length <= 40))) throw new Error("Invalid map catalog");
+    if (value.kind !== undefined && !MAP_KINDS.includes(value.kind)
+      || value.pack !== undefined && !/^[a-z0-9-]{1,48}$/.test(value.pack)
+      || value.worldUnits !== undefined && (!Number.isFinite(value.worldUnits) || value.worldUnits <= 0)) throw new Error("Invalid map identity");
+    if (value.maps !== undefined && (!Array.isArray(value.maps) || value.maps.length > MAP_KINDS.length || !value.maps.every(m => MAP_KINDS.includes(m.kind) && typeof m.name === "string" && m.name.length <= 40)
+      || new Set(value.maps.map(m => m.kind)).size !== value.maps.length)) throw new Error("Invalid map catalog");
     if (info()?.source !== value.source) {
       runtime.cancel(); searches.clear(); labels.clear(); annotations.reset(); saved.reset(); setSubmitted(undefined); setQuery("");
       tiles.clear(); setFront(undefined); setBack(undefined); setLookAhead([]); setPin(undefined);
@@ -196,18 +210,22 @@ export function createMap(io = offload(), viewport = { width: 400, height: 240 }
       if (infoRequest) { io.cancel(infoRequest); infoRequest = 0; }
       runtime.cancel(); retryAt = 0;
       if (session > 0) { if (!packs || !planar() || !useLocalTiles()) tiles.invalidate(); searches.invalidate(); labels.invalidate(); saved.refresh(); setStatus("Connecting map service"); }
-      else setStatus(localMapAvailable() ? "Hyrule from SD card" : "Mac disconnected - cached map");
+      else setStatus(localMapAvailable() ? "Map from SD card" : "Mac disconnected - cached map");
       previousSession = session;
     }
     if (bootstrap === 0 && packs?.connected()) {
-      bootstrap = packs.request("pack.read", "hyrule/0", result => {
-        bootstrap = -1;
-        if (!result.ok || info() || switching()) return;
+      const kind = ATLAS_KINDS[bootstrapIndex];
+      bootstrap = packs.request("pack.read", `${kind}/0`, result => {
+        bootstrap = ++bootstrapIndex < ATLAS_KINDS.length ? 0 : -1;
+        if (!result.ok) return;
         try {
           const atlas = JSON.parse(result.value);
-          if (atlas.format !== "pocket-map-atlas-rgb565-v1" || atlas.tiles !== 21845 || atlas.info?.space !== "planar") return;
-          installInfo({ ...atlas.info, kind: "hyrule", markers: false });
-          setLocalSource(atlas.info.source); setStatus("Hyrule from SD card");
+          if (!validAtlas(atlas) || atlas.info.kind !== undefined && atlas.info.kind !== kind) return;
+          const local = { ...atlas.info, kind, pack: atlas.info.pack ?? atlasPackName(kind, atlas.info.source), markers: false };
+          setInstalled(old => ({ ...old, [kind]: local }));
+          if (!info() && !switching()) {
+            installInfo(local); setLocalSource(local.source); setStatus("Map from SD card");
+          }
         } catch { /* Optional installation; the paired provider remains available. */ }
       }) || 0;
     }

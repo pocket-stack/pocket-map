@@ -10,7 +10,8 @@ const config = {
   ...overrides,
   cache: resolve(root, ".local/cache.sqlite"),
   atlas: resolve(root, ".local/hyrule"),
-  kind: process.argv.includes("--hyrule") ? "hyrule" : "osm",
+  atlases: { hyrule: resolve(root, ".local/hyrule"), oot: resolve(root, ".local/oot") },
+  kind: process.argv.includes("--oot") ? "oot" : process.argv.includes("--hyrule") ? "hyrule" : "osm",
 };
 const provider = connectOffloadUsbProvider({
   directory: resolve(root, "dist/psplink"),

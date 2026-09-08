@@ -1,8 +1,12 @@
-export type MapKind = "hyrule" | "osm";
+export const MAP_KINDS = ["osm", "hyrule", "oot"] as const;
+export type MapKind = typeof MAP_KINDS[number];
+export const ATLAS_KINDS = ["hyrule", "oot"] as const;
+export type AtlasKind = typeof ATLAS_KINDS[number];
+export const MAP_NAMES: Record<MapKind, string> = { osm: "OpenStreetMap", hyrule: "Hyrule - Breath of the Wild", oot: "Ocarina of Time" };
 export type Position = { space?: "mercator"; lat: number; lon: number } | { space: "planar"; x: number; y: number };
 export type Place = Position & { id: string; name: string; detail: string; zoom: number };
 export interface MapInfo { source: string; name: string; attribution: string; maxZoom: number; render?: "mesh"; prefetch?: boolean; dataZoom?: number; minZoom?: number;
-  space?: "mercator" | "planar"; home?: Place; local?: boolean; markers?: boolean; kind?: MapKind; maps?: { kind: MapKind; name: string }[] }
+  space?: "mercator" | "planar"; home?: Place; local?: boolean; markers?: boolean; kind?: MapKind; pack?: string; worldUnits?: number; maps?: { kind: MapKind; name: string }[] }
 export interface TileInput { source: string; z: number; x: number; y: number }
 export type SearchInput = Position & { query: string; source?: string };
 export interface BookmarkPage { items: Place[]; offset: number; total: number }
