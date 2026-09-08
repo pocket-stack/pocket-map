@@ -11,11 +11,13 @@
     "deploy": "bun scripts/deploy.ts",
     "sim": "bun scripts/sim.ts",
     "prepare:hyrule": "bun scripts/prepare-hyrule.ts",
-    "test": "bun test --conditions=browser test/geo.test.ts test/provider.test.ts test/model.test.ts test/bookmarks.test.ts test/transport.test.ts test/atlas.test.ts test/navigation.test.ts test/vector.test.ts",
+    "test": "bun test --conditions=browser test/geo.test.ts test/provider.test.ts test/model.test.ts test/bookmarks.test.ts test/transport.test.ts test/atlas.test.ts test/navigation.test.ts test/vector.test.ts test/sd.test.ts test/storage-benchmark.test.ts",
     "check": "bun run test && runtime/node_modules/.bin/tsc --noEmit",
     "psp": "bun scripts/psp.ts",
     "host:psp": "bun host/serve-usb.ts",
-    "test:psp:watch": "bun scripts/watch-psp-smoke.ts"
+    "test:psp:watch": "bun scripts/watch-psp-smoke.ts",
+    "prepare:sd": "bun scripts/prepare-sd.ts",
+    "deploy:sd": "python3 scripts/deploy-sd.py"
   },
   "dependencies": {
     "@mapbox/vector-tile": "3.0.0",

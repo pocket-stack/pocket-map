@@ -1,8 +1,9 @@
-import { createSignal, createMemo } from "solid-js";
+import { createSignal, createMemo, onCleanup } from "solid-js";
 import { createResourceRuntime, createResourceView } from "@pocketjs/framework/resource-view";
 import { createOffloadImageCollection, createOffloadMeshCollection, offloadResource } from "@pocketjs/framework/resource-offload";
 import { createTileCamera } from "@pocketjs/framework/tile-viewport";
 import { offload } from "@pocketjs/framework/offload";
+import { createPackedImageCollection, resourcePacks, resourcePackStats } from "@pocketjs/framework/resource-pack";
 import { analogX, analogY, onFrame, onButtonPress } from "@pocketjs/framework/lifecycle";
 import { BTN } from "@pocketjs/framework/input";
 import { inputDeltaSeconds, simulationHz, virtualNow } from "@pocketjs/framework/clock";
@@ -20,6 +21,13 @@ export const MENU = {
   map: ["Zoom in", "Zoom out", "Map labels", "Switch map", "Clear pin", "Retry tiles", "About & controls"],
 };
 export function createMap(io = offload(), viewport = { width: 400, height: 240 }, tileEntries = 40) {
+  // Cancelled wire requests retain offload credit until their response. Keep
+  // that queue bounded independently of active resource jobs and the SD queue.
+  const reads = { ...io,
+    request: (...args: Parameters<typeof io.request>) => io.pending() < 3 ? io.request(...args) : 0,
+    requestImage: (...args: Parameters<typeof io.requestImage>) => io.pending() < 3 ? io.requestImage(...args) : 0,
+    requestMesh: (...args: Parameters<typeof io.requestMesh>) => io.pending() < 3 ? io.requestMesh(...args) : 0,
+  };
   const [info, setInfo] = createSignal<MapInfo>();
   const [online, setOnline] = createSignal(false), [status, setStatus] = createSignal("Waiting for paired Mac");
   const [mode, setMode] = createSignal<MapMode>("map");
@@ -34,15 +42,22 @@ export function createMap(io = offload(), viewport = { width: 400, height: 240 }
   const remembered = new Map<MapKind, { x: number; y: number; zoom: number; pin?: Place }>();
   const planar = () => info()?.space === "planar";
   const p = project(HOME.lat, HOME.lon);
+  const packs = resourcePacks();
+  const [useLocalTiles, setUseLocalTiles] = createSignal(true);
+  const [localSource, setLocalSource] = createSignal<string>();
+  const localMapAvailable = () => !!packs?.connected() && planar() && useLocalTiles() && localSource() === info()?.source;
+  const [tileStorage, setTileStorage] = createSignal<"local" | "desktop">("desktop");
   const camera = createTileCamera({ ...viewport, x: p.x, y: p.y, zoom: HOME.zoom, minZoom: 1, maxZoom: 18, bounds: { width: 256, height: 256, wrapX: true } });
-  const runtime = createResourceRuntime({ maxConcurrent: 3, startsPerFrame: 1, completionsPerFrame: 1, maxCollections: 6, available: () => !switching() && io.connected() && !!info() && io.pending() < 3 });
-  const rasterTiles = createOffloadImageCollection(runtime, io, { key: (i: TileInput) => `${i.source}/${i.z}/${i.x}/${i.y}`, method: "map.tile", payload: JSON.stringify,
+  const runtime = createResourceRuntime({ maxConcurrent: 3, startsPerFrame: 1, completionsPerFrame: 1, maxCollections: 6, available: () => !switching() && !!info() && (io.connected() || !!packs && planar()) });
+  const rasterTiles = createPackedImageCollection<TileInput>(runtime, { key: i => `${i.source}/${i.z}/${i.x}/${i.y}`,
+    pack: i => useLocalTiles() && planar() ? { name: `hyrule-${i.source}-v1`, entry: 1 + (4 ** i.z - 1) / 3 + i.y * 2 ** i.z + i.x } : undefined,
+    fallback: { client: reads, method: "map.tile", payload: JSON.stringify }, materialized: storage => { setTileStorage(storage); if (storage === "local") setLocalSource(info()?.source); },
     width: 256, height: 256, maxEntries: tileEntries, maxViews: 2, maxDemandsPerView: 24, retry: { attempts: 3, delayFrames: 90, maxDelayFrames: 360 } });
   const vector = () => info()?.render === "mesh";
-  const meshTiles = createOffloadMeshCollection(runtime, io, {key:(i:TileInput)=>`${i.source}/${i.z}/${i.x}/${i.y}`,method:"map.mesh",payload:JSON.stringify,
+  const meshTiles = createOffloadMeshCollection(runtime, reads, {key:(i:TileInput)=>`${i.source}/${i.z}/${i.x}/${i.y}`,method:"map.mesh",payload:JSON.stringify,
     maxEntries:tileEntries,maxViews:2,maxDemandsPerView:24,retry:{attempts:3,delayFrames:90,maxDelayFrames:360}});
   const tiles = { invalidate(){rasterTiles.invalidate();meshTiles.invalidate();},clear(){rasterTiles.clear();meshTiles.clear();},stats:()=>vector()?meshTiles.stats():rasterTiles.stats() };
-  const labels = createOffloadImageCollection(runtime, io, { key: (i: Place) => `${i.name}/${i.detail}`, method: "map.label", payload: i => JSON.stringify({ name: i.name, detail: i.detail }),
+  const labels = createOffloadImageCollection(runtime, reads, { key: (i: Place) => `${i.name}/${i.detail}`, method: "map.label", payload: i => JSON.stringify({ name: i.name, detail: i.detail }),
     width: 256, height: 32, maxEntries: 24, maxViews: 29, maxDemandsPerView: 1 });
   const [lookAhead, setLookAhead] = createSignal<DrawTile[]>([]);
   const frontDemand=()=>[...(front()?.tiles.map(t=>({input:t.input,priority:t.priority,pin:true}))??[]),...lookAhead().map(t=>({input:t.input,priority:t.priority,pin:false}))];
@@ -55,7 +70,7 @@ export function createMap(io = offload(), viewport = { width: 400, height: 240 }
   const backView={state:(i:TileInput)=>vector()?meshBack.state(i):rasterBack.state(i)};
   const searches = runtime.createCollection({ key: (i: SearchInput) => JSON.stringify(i), maxEntries: 4, maxViews: 1, maxDemandsPerView: 1,
     maxCost: 4 * 8192, cost: () => 8192, maxResponseBytes: 5000, retry: { attempts: 1, delayFrames: 60, maxDelayFrames: 60 },
-    load: offloadResource<SearchInput>(io, "map.search", JSON.stringify), materialize(raw: string): Place[] {
+    load: offloadResource<SearchInput>(reads, "map.search", JSON.stringify), materialize(raw: string): Place[] {
       const rows = JSON.parse(raw);
       if (!validPlaces(rows)) throw new Error("Invalid places response");
       return rows;
@@ -63,8 +78,8 @@ export function createMap(io = offload(), viewport = { width: 400, height: 240 }
   });
   const results = createResourceView(searches, { demand: () => submitted() ? [{ input: submitted()!, priority: -10, pin: true }] : [] });
   const places = createMemo(() => submitted() ? results.value(submitted()!) ?? [] : []);
-  const saved = createSavedPlaces(io, runtime, mode, setMode, () => info()?.source);
-  const annotations = createAnnotations(io, runtime, viewport), prediction = createMapPrediction(viewport);
+  const saved = createSavedPlaces(io, runtime, mode, setMode, () => info()?.source, reads);
+  const annotations = createAnnotations(reads, runtime, viewport), prediction = createMapPrediction(viewport);
   const typing = () => mode() === "search" || mode() === "name";
   const listing = () => mode() === "results" || mode() === "saved";
   const rows = () => mode() === "saved" ? saved.page()?.items ?? [] : places();
@@ -89,6 +104,29 @@ export function createMap(io = offload(), viewport = { width: 400, height: 240 }
   }
   let frame = 0, previousSession = 0, infoRequest = 0, retryAt = 0, shiftAt = -10, levelAge = 0, candidateLevel = HOME.zoom;
   let confirmed = false;
+  let bootstrap = packs ? 0 : -1;
+  onCleanup(() => { if (bootstrap > 0) packs?.cancel(bootstrap); });
+  function installInfo(value: MapInfo) {
+    if (typeof value.source !== "string" || !/^[a-f0-9]{16}$/.test(value.source) || typeof value.name !== "string" || typeof value.attribution !== "string" || !Number.isInteger(value.maxZoom) || value.maxZoom < 1 || value.maxZoom > 18
+      || !Number.isInteger(value.minZoom ?? 1) || (value.minZoom ?? 1) < 0 || (value.minZoom ?? 1) > value.maxZoom
+      || value.render !== undefined && value.render !== "mesh"
+      || value.render === "mesh" && (!Number.isInteger(value.dataZoom) || value.dataZoom! < 0 || value.dataZoom! > value.maxZoom)
+      || value.space !== undefined && value.space !== "mercator" && value.space !== "planar"
+      || value.home !== undefined && (!validPlaces([value.home]) || (value.home.space === "planar") !== (value.space === "planar"))) throw new Error("Invalid map provider");
+    if (value.maps !== undefined && (!Array.isArray(value.maps) || value.maps.length > 2 || !value.maps.every(m => (m.kind === "hyrule" || m.kind === "osm") && typeof m.name === "string" && m.name.length <= 40))) throw new Error("Invalid map catalog");
+    if (info()?.source !== value.source) {
+      runtime.cancel(); searches.clear(); labels.clear(); annotations.reset(); saved.reset(); setSubmitted(undefined); setQuery("");
+      tiles.clear(); setFront(undefined); setBack(undefined); setLookAhead([]); setPin(undefined);
+      camera.setWorld({ minZoom: value.minZoom ?? 1, maxZoom: value.maxZoom, bounds: { width: 256, height: 256, wrapX: value.space !== "planar" } });
+      const resume = value.kind && remembered.get(value.kind);
+      if (resume) { camera.jump(resume.x, resume.y, resume.zoom); setPin(resume.pin); }
+      else if (value.home) { const home = worldPosition(value.home); camera.jump(home.x, home.y, value.home.zoom); }
+      if (!resume && !value.home) { const p = project(HOME.lat, HOME.lon); camera.jump(p.x, p.y, HOME.zoom); }
+      prediction.reset(camera.view()); candidateLevel = Math.round(camera.view().zoom); levelAge = 0;
+    }
+    setInfo(value); setRequestedKind(value.kind); setSwitching(false); setStatus("Map ready");
+  }
+
   function search() {
     const text = query().trim(); if (!text) return;
     const v = camera.view(), pos = positionAt(v.x, v.y, planar());
@@ -157,34 +195,29 @@ export function createMap(io = offload(), viewport = { width: 400, height: 240 }
     if (session !== previousSession) {
       if (infoRequest) { io.cancel(infoRequest); infoRequest = 0; }
       runtime.cancel(); retryAt = 0;
-      if (session > 0) { tiles.invalidate(); searches.invalidate(); labels.invalidate(); saved.refresh(); setStatus("Connecting map service"); }
-      else setStatus("Mac disconnected - cached map");
+      if (session > 0) { if (!packs || !planar() || !useLocalTiles()) tiles.invalidate(); searches.invalidate(); labels.invalidate(); saved.refresh(); setStatus("Connecting map service"); }
+      else setStatus(localMapAvailable() ? "Hyrule from SD card" : "Mac disconnected - cached map");
       previousSession = session;
     }
-    if (session > 0 && !infoRequest && frame >= retryAt) {
+    if (bootstrap === 0 && packs?.connected()) {
+      bootstrap = packs.request("pack.read", "hyrule/0", result => {
+        bootstrap = -1;
+        if (!result.ok || info() || switching()) return;
+        try {
+          const atlas = JSON.parse(result.value);
+          if (atlas.format !== "pocket-map-atlas-rgb565-v1" || atlas.tiles !== 21845 || atlas.info?.space !== "planar") return;
+          installInfo({ ...atlas.info, kind: "hyrule", markers: false });
+          setLocalSource(atlas.info.source); setStatus("Hyrule from SD card");
+        } catch { /* Optional installation; the paired provider remains available. */ }
+      }) || 0;
+    }
+    if (session > 0 && (bootstrap < 0 || frame >= 30 || !packs?.connected()) && !infoRequest && frame >= retryAt) {
       infoRequest = io.request("map.info", JSON.stringify({ kind: requestedKind() }), result => {
         infoRequest = 0; retryAt = frame + 3600;
         if (!result.ok) { if (switching()) { setSourceError("Map unavailable. Choose again to retry."); setMode("sources"); } setStatus(result.error); setSwitching(false); setRequestedKind(info()?.kind); retryAt = frame + 120; return; }
         try {
           const value: MapInfo = JSON.parse(result.value);
-          if (typeof value.source !== "string" || !/^[a-f0-9]{16}$/.test(value.source) || typeof value.name !== "string" || typeof value.attribution !== "string" || !Number.isInteger(value.maxZoom) || value.maxZoom < 1 || value.maxZoom > 18
-            || !Number.isInteger(value.minZoom ?? 1) || (value.minZoom ?? 1) < 0 || (value.minZoom ?? 1) > value.maxZoom
-            || value.render !== undefined && value.render !== "mesh"
-            || value.render === "mesh" && (!Number.isInteger(value.dataZoom) || value.dataZoom! < 0 || value.dataZoom! > value.maxZoom)
-            || value.space !== undefined && value.space !== "mercator" && value.space !== "planar"
-            || value.home !== undefined && (!validPlaces([value.home]) || (value.home.space === "planar") !== (value.space === "planar"))) throw new Error("Invalid map provider");
-          if (value.maps !== undefined && (!Array.isArray(value.maps) || value.maps.length > 2 || !value.maps.every(m => (m.kind === "hyrule" || m.kind === "osm") && typeof m.name === "string" && m.name.length <= 40))) throw new Error("Invalid map catalog");
-          if (info()?.source !== value.source) {
-            runtime.cancel(); searches.clear(); labels.clear(); annotations.reset(); saved.reset(); setSubmitted(undefined); setQuery("");
-            tiles.clear(); setFront(undefined); setBack(undefined); setLookAhead([]); setPin(undefined);
-            camera.setWorld({ minZoom: value.minZoom ?? 1, maxZoom: value.maxZoom, bounds: { width: 256, height: 256, wrapX: value.space !== "planar" } });
-            const resume = value.kind && remembered.get(value.kind);
-            if (resume) { camera.jump(resume.x, resume.y, resume.zoom); setPin(resume.pin); }
-            else if (value.home) { const home = worldPosition(value.home); camera.jump(home.x, home.y, value.home.zoom); }
-            if (!resume && !value.home) { const p = project(HOME.lat, HOME.lon); camera.jump(p.x, p.y, HOME.zoom); }
-            prediction.reset(camera.view()); candidateLevel = Math.round(camera.view().zoom); levelAge = 0;
-          }
-          setInfo(value); setRequestedKind(value.kind); setSwitching(false); setStatus("Map ready");
+          installInfo(value);
         } catch { setSwitching(false); setRequestedKind(info()?.kind); setStatus("Unsupported map provider"); retryAt = frame + 120; }
       });
     }
@@ -232,9 +265,10 @@ export function createMap(io = offload(), viewport = { width: 400, height: 240 }
     if (back() && front()?.tiles.every(t => frontView.state(t.input).status === "ready")) setBack(undefined);
   });
   return { viewport, io, runtime, tiles, vector, labels, frontView, backView, info, planar, online, zoomHeld, switching, sourceError, maps, choices, choosing, choose, openSources, switchMap, annotations, status, mode, setMode, query, setQuery, submitted, results, places, selection, setSelection, pin, menu, menuIndex,
+    localMapAvailable, tileStorage, useLocalTiles, setLocalTiles(value: boolean) { runtime.cancel(); setUseLocalTiles(value); tiles.clear(); },
     shift, symbols, front, back, camera, saved, typing, listing, rows, selectedIndex, select, saveCurrent, lookAhead, search, openSearch, go, zoom, key, dismiss, runMenu,
     clearBack: () => setBack(undefined),
-    diagnostics: () => ({ frame, pending: io.pending(), resources: runtime.stats(), tiles: tiles.stats(), camera: camera.view() }),
+    diagnostics: () => ({ frame, pending: io.pending(), resources: runtime.stats(), tiles: tiles.stats(), camera: camera.view(), pack: resourcePackStats(), storage: tileStorage() }),
   };
 }
 export type MapModel = ReturnType<typeof createMap>;
