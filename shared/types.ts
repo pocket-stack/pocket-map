@@ -2,7 +2,7 @@ export const MAP_KINDS = ["osm", "hyrule", "oot"] as const;
 export type MapKind = typeof MAP_KINDS[number];
 export const ATLAS_KINDS = ["hyrule", "oot"] as const;
 export type AtlasKind = typeof ATLAS_KINDS[number];
-export const MAP_NAMES: Record<MapKind, string> = { osm: "OpenStreetMap", hyrule: "Hyrule - Breath of the Wild", oot: "Ocarina of Time" };
+export const MAP_NAMES: Record<MapKind, string> = { osm: "OpenStreetMap", hyrule: "Breath of the Wild", oot: "Ocarina of Time" };
 export type Position = { space?: "mercator"; lat: number; lon: number } | { space: "planar"; x: number; y: number };
 export type Place = Position & { id: string; name: string; detail: string; zoom: number };
 export interface MapInfo { source: string; name: string; attribution: string; maxZoom: number; render?: "mesh"; prefetch?: boolean; dataZoom?: number; minZoom?: number;

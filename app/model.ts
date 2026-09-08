@@ -88,10 +88,11 @@ export function createMap(io = offload(), viewport = { width: 400, height: 240 }
   const selectedIndex = () => mode() === "saved" ? saved.selection() : selection();
   function select(index: number) { const n = Math.max(0, Math.min(rows().length - 1, index)); if (mode() === "saved") saved.setSelection(n); else setSelection(n); }
   prediction.reset(camera.view());
+  const mapName = () => { const value = info(); return value?.kind ? MAP_NAMES[value.kind] : value?.name ?? "OpenStreetMap"; };
   const maps = createMemo(() => {
     const catalog = [...(info()?.maps ?? [])];
     for (const kind of ATLAS_KINDS) { const local = installed()[kind]; if (local && !catalog.some(m => m.kind === kind)) catalog.push({ kind, name: local.name }); }
-    return catalog;
+    return catalog.map(m => ({ ...m, name: MAP_NAMES[m.kind] }));
   });
   const labelLayers = () => vector() ? [LAYERS[0],LAYERS[4]] : info()?.kind === "oot" ? [LAYERS[0], { id: "travel" as const, name: "Regions & dungeon rooms" }, LAYERS[4]] : LAYERS;
   const choices = () => mode() === "sources" ? maps().map(m => m.name) : labelLayers().map(l => l.name);
@@ -282,7 +283,7 @@ export function createMap(io = offload(), viewport = { width: 400, height: 240 }
     }
     if (back() && front()?.tiles.every(t => frontView.state(t.input).status === "ready")) setBack(undefined);
   });
-  return { viewport, io, runtime, tiles, vector, labels, frontView, backView, info, planar, online, zoomHeld, switching, sourceError, maps, choices, choosing, choose, openSources, switchMap, annotations, status, mode, setMode, query, setQuery, submitted, results, places, selection, setSelection, pin, menu, menuIndex,
+  return { viewport, io, runtime, tiles, vector, labels, frontView, backView, info, mapName, planar, online, zoomHeld, switching, sourceError, maps, choices, choosing, choose, openSources, switchMap, annotations, status, mode, setMode, query, setQuery, submitted, results, places, selection, setSelection, pin, menu, menuIndex,
     localMapAvailable, tileStorage, useLocalTiles, setLocalTiles(value: boolean) { runtime.cancel(); setUseLocalTiles(value); tiles.clear(); },
     shift, symbols, front, back, camera, saved, typing, listing, rows, selectedIndex, select, saveCurrent, lookAhead, search, openSearch, go, zoom, key, dismiss, runMenu,
     clearBack: () => setBack(undefined),

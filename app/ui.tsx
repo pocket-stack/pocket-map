@@ -132,9 +132,9 @@ function Deck(p: { s: MapModel }) {
     <View class="absolute left-0 top-0 w-full h-[38] bg-gradient-to-b from-[#eef3f9] to-[#b5c5d8]" />
     {search}
     <View class="absolute left-[72] top-[6] w-[242] h-[28] rounded-[5] border border-[#91a3ba] bg-white overflow-hidden" style={{ display: typing() || results() ? 0 : 1 }}>
-      <Text class="absolute left-[7] top-[7] text-xs text-[#354d67]">{typing() ? `${(naming() ? p.s.saved.name() : p.s.query()).slice(-31)}|` : saved() ? "Saved on your paired Mac" : results() ? p.s.query().slice(0, 32) : p.s.localMapAvailable() && !p.s.online() ? "Map on SD - Mac for search & saves" : p.s.online() ? p.s.planar() ? p.s.info()?.name ?? "Local atlas" : "Explore with your Nintendo 3DS" : "Waiting for paired Mac"}</Text>
+      <Text class="absolute left-[7] top-[7] text-xs text-[#354d67]">{typing() ? `${(naming() ? p.s.saved.name() : p.s.query()).slice(-31)}|` : saved() ? "Saved on your paired Mac" : results() ? p.s.query().slice(0, 32) : p.s.localMapAvailable() && !p.s.online() ? "Map on SD - Mac for search & saves" : p.s.online() ? p.s.planar() ? p.s.mapName() : "Explore with your Nintendo 3DS" : "Waiting for paired Mac"}</Text>
     </View>
-    <ClassicButton debugName="MapSourceButton" label={p.s.switching() ? "Opening map..." : `Map: ${p.s.info()?.kind === "hyrule" ? "Hyrule" : p.s.info()?.name ?? "OpenStreetMap"}`} surface="auxiliary" style={{ ...box(72, 6, 242, 28), display: typing() || results() ? 1 : 0 }} disabled={blocked() || !p.s.maps().length} onPress={p.s.openSources} />
+    <ClassicButton debugName="MapSourceButton" label={p.s.switching() ? "Opening map..." : `Map: ${p.s.mapName()}`} surface="auxiliary" style={{ ...box(72, 6, 242, 28), display: typing() || results() ? 1 : 0 }} disabled={blocked() || !p.s.maps().length} onPress={p.s.openSources} />
     <Show when={p.s.choosing()}><View style={box(6, 40, 308, 194)}>
       <For each={p.s.choices()}>{(name, i) => <ClassicButton label={name} surface="auxiliary" tone={p.s.selection() === i() ? "primary" : undefined} style={box(0, i() * 30, 308, 27)} onPress={() => p.s.choose(i())} />}</For>
       <ClassicButton label="Back to map" surface="auxiliary" style={box(0, 160, 308, 34)} onPress={p.s.dismiss} />
