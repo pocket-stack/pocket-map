@@ -4,11 +4,22 @@ A map browser for Nintendo 3DS and PSP, built with [PocketJS](https://github.com
 
 The Mac fetches OSM vector tiles, prepares bounded geometry and streams it to the 3DS GPU drawing path. Four real San Francisco tiles used **79.5% fewer terrain bytes** than the previous raw bitmap path; z14 geometry is reused through display z18. Hyrule retains its complete local raster atlas and 2,576 searchable places, with no internet requests while browsing. See [vector architecture, measurements and limits](docs/VECTOR_MAP.md).
 
-<p><img src="docs/images/vector-osm.png" width="320" alt="Actual San Francisco vector data rendered by the compiled dual-screen Pocket Map guest" /> <img src="docs/images/hyrule.png" width="320" alt="Pocket Map displaying the local Hyrule atlas on a compiled dual-screen guest" /> <img src="docs/images/hyrule-search.png" width="320" alt="Local Kakariko search results with the bottom-screen selection touchpad" /></p>
+### San Francisco on the 3DS native renderer
+
+Union Square, the Embarcadero near the Ferry Building, and Golden Gate Park:
+
+![Union Square, San Francisco — Pocket Map's native 3DS build in Azahar](docs/images/sf-union-square-3ds.png)
+![Embarcadero near the Ferry Building, San Francisco — Pocket Map's native 3DS build in Azahar](docs/images/sf-ferry-building-3ds.png)
+![Golden Gate Park, San Francisco — Pocket Map's native 3DS build in Azahar](docs/images/sf-golden-gate-park-3ds.png)
+
+These are **native 3DS screenshots captured in Azahar**, using real OSM data and
+the production app's UI. The 400×240 upper and 320×240 lower framebuffers are
+stacked without scaling. They are emulator captures, not console photographs.
+[Capture method, coordinates and provenance](docs/images/CAPTURES.md).
 
 OSM map data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright), served as Shortbread vectors by VersaTiles.
 
-These are **compiled guest + Wasm captures**, at the 3DS's 400×240 / 320×240 logical resolutions, not console photographs. Map artwork belongs to Nintendo; the pinned atlas and marker source is [Zelda Dungeon's map repository](https://github.com/zeldadungeon/maps/tree/d32a85656031d861cef38e32eb927a7d08a983a9/public/botw). Downloaded assets and generated databases stay outside Git.
+Map artwork belongs to Nintendo; the pinned atlas and marker source is [Zelda Dungeon's map repository](https://github.com/zeldadungeon/maps/tree/d32a85656031d861cef38e32eb927a7d08a983a9/public/botw). Downloaded assets and generated databases stay outside Git.
 
 ## PSP over USB
 
@@ -79,8 +90,10 @@ Typing, dragging, inertia and zoom transitions update locally. Missing tiles sho
 After preparing the Mac atlas, run `bun run prepare:sd` and
 `bun run deploy:sd <3ds-ip>` to install a **354 MiB** prepared texture pack.
 The console reads and inflates individual records on a native worker; terrain
-misses no longer require Wi-Fi. See [installation, storage costs and the device
-comparison procedure](docs/SD_MAP.md).
+misses no longer require Wi-Fi. In one physical 3DS comparison, mean time to
+ready terrain across four views fell from **1,178 ms over Wi-Fi to 293 ms from
+SD**. This does not establish sustained 60 FPS. See [installation, storage costs,
+measurements and limits](docs/SD_MAP.md).
 
 ## Complete local Hyrule atlas
 
@@ -88,9 +101,10 @@ comparison procedure](docs/SD_MAP.md).
 1,365 JPEG source tiles across six levels, about 49 MB. It rebakes the full
 24,000px square source into **21,845 RGB565 textures across levels 0–7**, using
 256px texture envelopes. Original source detail is preserved by subdividing
-the 750px tiles; the top level is a 32,768px grid. Deflate compression is used
-only for Mac storage. The 3DS receives raw pixels and performs no JPEG or
-Deflate decoding.
+the 750px tiles; the top level is a 32,768px grid. In the desktop streaming path,
+Deflate is used for Mac storage and the 3DS receives raw pixels. With the optional
+SD pack, the Mac prepares PICA texture layout and the native SD worker inflates
+individual records. The 3DS performs no JPEG decoding.
 
 The completed `.local/hyrule/atlas.sqlite` is about **592 MB** and includes an
 FTS5 index of regions, landmarks, towers, shrines, villages, Korok seeds and
@@ -184,7 +198,7 @@ const view = createResourceView(tiles, { demand: visibleTileDemand });
 // <ResourceMesh state={() => view.state(tile)} fallback={() => <TileSkeleton />} />
 ```
 
-Hyrule declares `createOffloadImageCollection` and renders `ResourceImage`.
+Hyrule declares `createPackedImageCollection` with a desktop fallback and renders `ResourceImage`.
 Rendering starts no IO. The native worker owns reception; the scheduler admits
 one materialization per frame; the collection returns staging and eventually
 frees its native handles.

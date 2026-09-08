@@ -1,0 +1,141 @@
+{
+  "capturedAt": "2026-09-08",
+  "applicationCommit": "958cb8dd72d3c911636530a76b2947aca4d30a72",
+  "runtimeCommit": "e2226e8f69990dd8361d79aabf47bcbedc44786d",
+  "emulator": "Azahar 2125.1.2",
+  "renderer": "Vulkan, resolution_factor=1",
+  "entry": "app/main.tsx (production guest and UI)",
+  "nativeBinarySha256": "a4ef45dcafd86f54983a6e37ec3c04a4007d924c131d75fbfab9493a247b71a9",
+  "capture": {
+    "method": "3DS native GX display-transfer readback of top and auxiliary PICA targets",
+    "frame": 600,
+    "framesPerRun": 1,
+    "screens": {
+      "top": [
+        400,
+        240
+      ],
+      "bottom": [
+        320,
+        240
+      ]
+    },
+    "presentation": "Top and bottom stacked without scaling, bottom centered with white side margins",
+    "sceneSetup": "map.info.home sets the listed camera coordinates; predictive HTTP demand disabled; real OSM provider and local cache otherwise unchanged",
+    "mapData": "OpenStreetMap contributors, Shortbread MVT via https://tiles.versatiles.org/tiles/osm/{z}/{x}/{y}",
+    "limits": "Emulator screenshots, not console photographs or hardware performance measurements"
+  },
+  "images": [
+    {
+      "file": "sf-union-square-3ds.png",
+      "camera": {
+        "id": "sf-union-square",
+        "name": "Union Square",
+        "detail": "San Francisco, California",
+        "lat": 37.7879,
+        "lon": -122.4075,
+        "zoom": 15
+      },
+      "size": [
+        400,
+        480
+      ],
+      "sha256": "d96ac6f5cb5e87ac03bd90ba40ac3a776c22546afbc8211a9d52229eb5932d86",
+      "rawReadbacks": [
+        {
+          "name": "aux-f0600.raw",
+          "bytes": 307200,
+          "sha256": "746257d31b2bd086fd8706007f9ed1ca4750a57152d2af9ab4cb88f5d941d68f"
+        },
+        {
+          "name": "f0600.raw",
+          "bytes": 384000,
+          "sha256": "541a48fc6e9e56e7a438ce2551dfda97e3bc1294070b02f5ed08a5ad9b5f971d"
+        }
+      ],
+      "meshReplies": 4,
+      "lastProviderDiagnostics": {
+        "osm": {
+          "httpHits": 0,
+          "downloads": 4,
+          "meshBytes": 91192,
+          "prepared": 4
+        }
+      }
+    },
+    {
+      "file": "sf-ferry-building-3ds.png",
+      "camera": {
+        "id": "sf-ferry-building",
+        "name": "Ferry Building",
+        "detail": "San Francisco, California",
+        "lat": 37.7955,
+        "lon": -122.3937,
+        "zoom": 16
+      },
+      "size": [
+        400,
+        480
+      ],
+      "sha256": "afca5b8a72412f9b2958ca44f78b87227c18cdb547844adf9e05a81dcb0aa739",
+      "rawReadbacks": [
+        {
+          "name": "aux-f0600.raw",
+          "bytes": 307200,
+          "sha256": "746257d31b2bd086fd8706007f9ed1ca4750a57152d2af9ab4cb88f5d941d68f"
+        },
+        {
+          "name": "f0600.raw",
+          "bytes": 384000,
+          "sha256": "af705e3c585ca076113d0cb6a777d1b095d55e983a5787021856dbf609ffd8e2"
+        }
+      ],
+      "meshReplies": 1,
+      "lastProviderDiagnostics": {
+        "osm": {
+          "httpHits": 1,
+          "downloads": 0,
+          "meshBytes": 16370,
+          "prepared": 1
+        }
+      }
+    },
+    {
+      "file": "sf-golden-gate-park-3ds.png",
+      "camera": {
+        "id": "sf-golden-gate-park",
+        "name": "Golden Gate Park",
+        "detail": "San Francisco, California",
+        "lat": 37.7694,
+        "lon": -122.4862,
+        "zoom": 15
+      },
+      "size": [
+        400,
+        480
+      ],
+      "sha256": "58ecc0917c077de74f3746de40c10d33c988f626d575d4a4e9f8b6f30e53de92",
+      "rawReadbacks": [
+        {
+          "name": "aux-f0600.raw",
+          "bytes": 307200,
+          "sha256": "746257d31b2bd086fd8706007f9ed1ca4750a57152d2af9ab4cb88f5d941d68f"
+        },
+        {
+          "name": "f0600.raw",
+          "bytes": 384000,
+          "sha256": "fba50df6dff02e84858cdd0e3c9996e1ba2312d5d31ee11608b2eb08a40f2f06"
+        }
+      ],
+      "meshReplies": 2,
+      "lastProviderDiagnostics": {
+        "osm": {
+          "httpHits": 0,
+          "downloads": 2,
+          "meshBytes": 31564,
+          "prepared": 2
+        }
+      }
+    }
+  ]
+}
